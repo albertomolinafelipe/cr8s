@@ -1,0 +1,8 @@
+[workspace]
+resolver = "1"
+members = [
+    "server",
+    "node",
+    "pod",
+    "cli"
+]
