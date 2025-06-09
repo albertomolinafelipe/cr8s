@@ -1,0 +1,67 @@
+{
+  "id": null,
+  "uid": "r8s-nodes-dashboard",
+  "title": "R8S Nodes",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Nodes Table",
+      "type": "table",
+      "datasource": {
+        "type": "marcusolsson-json-datasource",
+        "uid": "r8s-json"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "urlPath": "/nodes",
+          "method": "GET",
+          "data": {},
+          "query": "",
+          "headers": [],
+          "body": "",
+          "format": "table",
+          "rootSelector": "$[*]",
+          "fields": [
+            {
+              "jsonPath": "$[*].name"
+            },
+            {
+              "jsonPath": "$[*].address",
+              "language": "jsonpath",
+              "name": ""
+            },
+            {
+              "jsonPath": "$[*].port",
+              "language": "jsonpath",
+              "name": ""
+            },
+            {
+              "jsonPath": "$[*].started_at",
+              "language": "jsonpath",
+              "name": ""
+            },
+            {
+              "jsonPath": "$[*].status",
+              "language": "jsonpath",
+              "name": ""
+            }
+          ]
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    }
+  ]
+}

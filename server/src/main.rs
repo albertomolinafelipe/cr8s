@@ -1,4 +1,4 @@
-use actix_web::{App, HttpServer, web};
+use actix_web::{App, HttpServer, web, HttpResponse, Responder};
 use std::env;
 
 mod nodes;
@@ -20,9 +20,14 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
+            .route("/", web::get().to(root_handler))
             .configure(nodes::config)
     })
     .bind(("0.0.0.0", port))?
     .run()
     .await
+}
+
+async fn root_handler() -> impl Responder {
+    HttpResponse::Ok().body("Hello from r8s-server")
 }

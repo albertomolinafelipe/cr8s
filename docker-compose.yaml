@@ -41,6 +41,26 @@ services:
     networks:
       - r8s-net
 
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_INSTALL_PLUGINS=marcusolsson-json-datasource
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - r8s-server
+    networks:
+      - r8s-net
+
+volumes:
+  grafana-storage:
+
 networks:
   r8s-net:
     driver: bridge
