@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   r8s-server:
     image: r8s-server
     container_name: r8s-server
     ports:
-      - "8080:8080"
+      - "7620:7620"
     networks:
       - r8s-net
 
@@ -13,17 +11,29 @@ services:
     image: r8s-node
     container_name: r8s-node-1
     privileged: true
+    ports:
+      - "7621"
+    environment:
+        NODE_PORT: 7621
+        R8S_SERVER_PORT: 7620
+        R8S_SERVER_HOST: "r8s-server"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - r8s-server
     networks:
       - r8s-net
-
+  
   r8s-node-2:
     image: r8s-node
     container_name: r8s-node-2
     privileged: true
+    ports:
+      - "7622"
+    environment:
+        NODE_PORT: 7622
+        R8S_SERVER_PORT: 7620
+        R8S_SERVER_HOST: "r8s-server"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -34,4 +44,3 @@ services:
 networks:
   r8s-net:
     driver: bridge
-
