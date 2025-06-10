@@ -4,6 +4,5 @@ members = [
     "shared",
     "server",
     "node",
-    "pod",
     "cli",
 ]

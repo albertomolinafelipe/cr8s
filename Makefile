@@ -1,9 +1,8 @@
-COMPONENTS := server node pod
+COMPONENTS := server node
 CLI := cli
 
 docker_image_server := r8s-server
 docker_image_node   := r8s-node
-docker_image_pod    := r8s-pod
 
 .PHONY: all build docker docker-% clean
 
