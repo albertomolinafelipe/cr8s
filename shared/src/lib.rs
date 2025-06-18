@@ -1,6 +1,2 @@
-mod models;
-
-pub use models::{
-    Node,
-    NodeStatus
-};
+pub mod models;
+pub mod api;

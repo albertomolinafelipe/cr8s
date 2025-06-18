@@ -7,7 +7,9 @@ edition = "2024"
 shared = { path = "../shared"}
 actix-web = "4.11.0"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"]}
-serde_json = "1.0.140"
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = { version = "1.17.0", features = ["serde", "v4"]}

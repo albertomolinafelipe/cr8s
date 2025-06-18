@@ -21,7 +21,7 @@ docker-%:
 	@echo "Building Docker image for $*"
 	@img=$(docker_image_$*); \
 	printf '%s\n' \
-		'FROM clux/muslrust:latest AS builder' \
+		'FROM clux/muslrust:1.87.0-stable AS builder' \
 		'ARG COMPONENT' \
 		'WORKDIR /app' \
 		'COPY . .' \

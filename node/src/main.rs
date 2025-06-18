@@ -1,64 +1,24 @@
-use std::env;
-use reqwest::Client;
-use serde::Serialize;
+use tracing_subscriber;
 
-const R8S_SERVER_HOST: &str = "localhost";
-const R8S_SERVER_PORT: u16 = 7620;
-
-#[derive(Debug)]
-pub struct Config {
-    pub server_address: String,
-    pub server_port: u16,
-    pub port: u16,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NodeInfo {
-    pub port: u16,
-}
+mod node_api;
+mod runtime;
+pub mod config;
 
 #[tokio::main]
-async fn main() {
-    let config = load_config();
+async fn main() -> std::io::Result<()> {
+    let config = config::load_config();
+    tracing_subscriber::fmt::init();
 
-    let url = format!(
-        "http://{}:{}/nodes/register",
-        config.server_address,
-        config.server_port
-    );
+    let server = node_api::run(config.clone()).await?;
+    let server_handle = tokio::spawn(server);
 
-    let client = Client::new();
-    let node_info = NodeInfo {
-        port: config.port,
-    };
-
-    match client.post(url)
-        .json(&node_info)
-        .send()
-        .await
-    {
-        Ok(_) => {},
-        Err(e) => eprintln!("error sending register: {}", e),
-    };
-}
-
-fn load_config() -> Config {
-    let server_address = env::var("R8S_SERVER_HOST")
-        .unwrap_or_else(|_| R8S_SERVER_HOST.to_string());
-
-    let server_port = env::var("R8S_SERVER_PORT")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(R8S_SERVER_PORT);
-
-    let port = env::var("NODE_PORT")
-        .expect("NODE_PORT environment variable is required")
-        .parse()
-        .expect("NODE_PORT must be a valid number");
-
-    Config {
-        server_address,
-        server_port,
-        port,
+    if let Err(_) = runtime::run(config).await {
+        std::process::exit(1);
     }
+
+    if let Err(_) = server_handle.await {
+        std::process::exit(1);
+    }
+
+    Ok(())
 }

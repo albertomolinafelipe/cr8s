@@ -15,6 +15,7 @@ services:
       - "7621"
     environment:
         NODE_PORT: 7621
+        NODE_NAME: "r8s-node-1"
         R8S_SERVER_PORT: 7620
         R8S_SERVER_HOST: "r8s-server"
     volumes:
@@ -32,6 +33,7 @@ services:
       - "7622"
     environment:
         NODE_PORT: 7622
+        NODE_NAME: "r8s-node-2"
         R8S_SERVER_PORT: 7620
         R8S_SERVER_HOST: "r8s-server"
     volumes:
@@ -41,22 +43,22 @@ services:
     networks:
       - r8s-net
 
-  grafana:
-    image: grafana/grafana
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-storage:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-    environment:
-      - GF_INSTALL_PLUGINS=marcusolsson-json-datasource
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    depends_on:
-      - r8s-server
-    networks:
-      - r8s-net
+# grafana:
+#   image: grafana/grafana
+#   container_name: grafana
+#   ports:
+#     - "3000:3000"
+#   volumes:
+#     - grafana-storage:/var/lib/grafana
+#     - ./grafana/provisioning:/etc/grafana/provisioning
+#   environment:
+#     - GF_INSTALL_PLUGINS=marcusolsson-json-datasource
+#     - GF_SECURITY_ADMIN_USER=admin
+#     - GF_SECURITY_ADMIN_PASSWORD=admin
+#   depends_on:
+#     - r8s-server
+#   networks:
+#     - r8s-net
 
 volumes:
   grafana-storage:

@@ -1,4 +1,5 @@
 pub mod get;
+pub mod apply;
 
 use std::fmt;
 use clap::ValueEnum;

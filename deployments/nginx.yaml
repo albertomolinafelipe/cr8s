@@ -1,0 +1,27 @@
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+    - name: nginx
+      image: nginx:latest
+      ports:
+        - containerPort: 80
+      env:
+        - name: ENV
+          value: production
+        - name: DEBUG
+          value: "false"
+---
+kind: Pod
+metadata:
+  name: lite-db-pod
+spec:
+  containers:
+    - name: lite-db
+      image: nouchka/sqlite3:latest
+      ports:
+        - containerPort: 9000
+      env:
+        - name: DB_FILE
+          value: /data/db.sqlite

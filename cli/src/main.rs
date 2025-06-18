@@ -16,7 +16,7 @@ enum Commands {
     /// Retrieve cluster resources
     Get(commands::get::GetArgs),
     /// Create or update resources from a configuration file
-    Apply,
+    Apply(commands::apply::ApplyArgs),
     /// Delete specified resources
     Delete,
     /// Show detailed information about a resource
@@ -30,9 +30,8 @@ fn main() {
     let config = config::load_config();
 
     match cli.command {
-        Commands::Get(args) => {
-            commands::get::handle(&config, &args);
-        }
+        Commands::Get(args) => commands::get::handle(&config, &args),
+        Commands::Apply(args) => commands::apply::handle(&config, &args),
         _ => {
             println!("not implemented...");
         }
