@@ -22,7 +22,7 @@ pub async fn run(mut config: Config) -> Result<(), ()> {
 async fn poll(config: &Config) -> Result<(), ()> {
     let client = Client::new();
     
-    for _ in 1..=5 {
+    for _ in 1..=15 {
         let node_info = NodeRegisterReq {
             port: config.port,
             name: config.name.clone(),
@@ -37,7 +37,6 @@ async fn poll(config: &Config) -> Result<(), ()> {
         match response {
             Ok(resp) if resp.status().is_success() => {
                 tracing::info!("Assignment: {}", resp.text().await.ok().unwrap());
-                return Ok(())
             },
             Ok(resp) => {
                 tracing::warn!("Poll attemp failed: HTTP {}", resp.status());

@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:24.0.5
+        options: --privileged
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Build Docker images
+      run: make
+
+    - name: Run integration tests
+      env:
+        TESTCONTAINERS_DOCKER_CLIENT_TIMEOUT: 60
+        TESTCONTAINERS_RYUK_DISABLED: true
+      run: cargo test -p tests -- --nocapture

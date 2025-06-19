@@ -32,7 +32,7 @@ docker-%:
 		'ARG COMPONENT' \
 		'COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/$$COMPONENT /usr/local/bin/$$COMPONENT' \
 		'ENTRYPOINT ["/usr/local/bin/$*"]' \
-	| docker build --build-arg COMPONENT=$* -t $$img -f - .
+	| { set -e; docker build --build-arg COMPONENT=$* -t $$img -f - .; }
 
 clean:
 	cargo clean

@@ -20,16 +20,17 @@ async fn main() -> std::io::Result<()> {
 
     let db = sled::open("r8s").unwrap();
     let state = web::Data::new(R8s::new(db));
-
-    HttpServer::new(move || {
+    
+    let server = HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
             .configure(endpoints::config)
             .route("/", web::get().to(root_handler))
     })
-    .bind(("0.0.0.0", port))?
-    .run()
-    .await
+    .bind(("0.0.0.0", port))?;
+
+    println!("r8s-server ready");
+    server.run().await
 }
 
 async fn root_handler() -> impl Responder {
