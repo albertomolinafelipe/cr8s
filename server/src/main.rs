@@ -2,9 +2,8 @@ use actix_web::{App, HttpServer, web, HttpResponse, Responder};
 use std::env;
 use tracing_subscriber;
 
-mod nodes;
-mod pods;
 mod store;
+mod endpoints;
 
 use store::R8s;
 
@@ -19,13 +18,13 @@ async fn main() -> std::io::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(R8S_SERVER_PORT);
 
-    let state = web::Data::new(R8s::new());
+    let db = sled::open("r8s").unwrap();
+    let state = web::Data::new(R8s::new(db));
 
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
-            .configure(nodes::config)
-            .configure(pods::config)
+            .configure(endpoints::config)
             .route("/", web::get().to(root_handler))
     })
     .bind(("0.0.0.0", port))?

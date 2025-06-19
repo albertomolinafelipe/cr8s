@@ -7,7 +7,7 @@ use std::borrow::Cow;
 /// Represents a top-level Kubernetes-like object with metadata and a kind-specific spec.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SpecObject {
-    pub metadata: Metadata,
+    pub metadata: UserMetadata,
     
     #[serde(flatten)]
     pub spec: Spec,
@@ -18,6 +18,7 @@ pub struct SpecObject {
 #[serde(tag = "kind", content = "spec", rename_all = "PascalCase")]
 pub enum Spec {
     Pod(PodSpec),
+    Deployment 
 }
 
 /// Enum for supported object kinds.
@@ -57,7 +58,7 @@ pub struct Port {
 
 /// Metadata for any top-level object, includes at least a name.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Metadata {
+pub struct UserMetadata {
     pub name: String,
 }
 
@@ -102,6 +103,7 @@ impl std::fmt::Display for Spec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Spec::Pod(_) => write!(f, "pod"),
+            Spec::Deployment => write!(f, "deployment")
         }
     }
 }

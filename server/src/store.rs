@@ -1,87 +1,78 @@
-use std::sync::RwLock;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
 
 use shared::models::{
-    Metadata, Node, PodSpec, PodStatus, SpecObject, Spec
+    UserMetadata, Node, PodSpec, PodStatus
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "PascalCase")]
-enum StateObject {
-    Pod {
-        id: Uuid,
-        node_id: Uuid,
-        pod_status: PodStatus,
-        metadata: Metadata,
-        spec: PodSpec,
-    },
+struct PodObject {
+    id: Uuid,
+    node_id: Uuid,
+    pod_status: PodStatus,
+    metadata: Metadata,
+    spec: PodSpec,
 }
 
 
-#[derive(Debug, Deserialize, Serialize)]
-struct DesiredState {
-    version: u16,
-    modified_at: RwLock<Option<DateTime<Utc>>>,
-    objects: RwLock<Vec<StateObject>>
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ClusterState {
-    objects: Vec<StateObject>,
-    nodes: RwLock<Vec<Node>>,
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Metadata {
+    creation_time: DateTime<Utc>,
+    generation: u16,
+    modified_at: DateTime<Utc>,
+    #[serde(flatten)]
+    user: UserMetadata
 }
 
 pub struct R8s {
-    cluster_state: ClusterState,
-    desired_state: DesiredState,
-    spec: RwLock<Vec<SpecObject>>
+    db: sled::Db
 }
 
 
 
 impl R8s {
-    pub fn new() -> Self {
+    pub fn new(db: sled::Db) -> Self {
         Self {
-            cluster_state: ClusterState { 
-                nodes: RwLock::new(Vec::new()),
-                objects: Vec::new()
-            },
-            desired_state: DesiredState { 
-                version: 0, 
-                modified_at: RwLock::new(None),
-                objects: RwLock::new(Vec::new()) 
-            },
-            spec: RwLock::new(Vec::new()),
+            db
         }
     }
 
-    pub fn add_object(&self, obj: SpecObject) {
-        // add spec
-        self.spec.write().unwrap().push(obj.clone());
-        
-        // scheduling
-        let spec = match obj.spec {
-            Spec::Pod(ref spec) => spec,
+    pub fn add_pod(&self, spec: PodSpec, metadata: UserMetadata) -> Uuid {
+        let pod = PodObject {
+            id: Uuid::new_v4(),
+            node_id: Uuid::nil(),
+            pod_status: PodStatus::Pending,
+            metadata: Metadata::new(metadata),
+            spec
         };
-        let state_object = StateObject::Pod { 
-            id: Uuid::new_v4(), 
-            node_id: Uuid::nil(), 
-            pod_status: PodStatus::Pending, 
-            metadata: obj.metadata,
-            spec: spec.clone()
-        };
-        *self.desired_state.modified_at.write().unwrap() = Some(Utc::now());
-        self.desired_state.objects.write().unwrap().push(state_object);
+        let key = format!("pods/{}", pod.id);
+        let value = serde_json::to_vec(&pod).unwrap();
+        self.db.insert(key, value).ok();
+        pod.id
     }
 
     pub fn add_node(&self, node: Node) {
-        self.cluster_state.nodes.write().unwrap().push(node);
+        let key = format!("nodes/{}", node.id);
+        let value = serde_json::to_vec(&node).unwrap();
+        self.db.insert(key, value).ok();
     }
 
     pub fn get_nodes(&self) -> Vec<Node> {
-        self.cluster_state.nodes.read().unwrap().clone()
+        self.db.scan_prefix("nodes/")
+            .filter_map(|res| res.ok())
+            .filter_map(|(_, val)| serde_json::from_slice::<Node>(&val).ok())
+            .collect()
     }
 }
 
+impl Metadata {
+    pub fn new(user: UserMetadata) -> Self {
+        Self { 
+            creation_time: Utc::now(),
+            generation: 0,
+            modified_at: Utc::now(),
+            user
+        }
+    }
+}
