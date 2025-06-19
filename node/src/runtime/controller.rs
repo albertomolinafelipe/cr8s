@@ -1,12 +1,13 @@
 use tracing::instrument;
 use reqwest::Client;
-use shared::api::NodeRegisterReq;
+use shared::api::{CreateResponse, NodeRegisterReq};
 use tokio::time::{sleep, Duration};
 use crate::config::Config;
 
+
 #[instrument(skip(config))]
-pub async fn run(config: Config) -> Result<(), ()> {
-    register(&config).await.map_err(|_| {
+pub async fn run(mut config: Config) -> Result<(), ()> {
+    register(&mut config).await.map_err(|_| {
         tracing::error!("Failed to register after {} attempts", config.register_retries);
     })?;
     poll(&config).await.map_err(|_| {
@@ -15,6 +16,7 @@ pub async fn run(config: Config) -> Result<(), ()> {
 
     Ok(())
 }
+
 
 #[instrument(skip(config))]
 async fn poll(config: &Config) -> Result<(), ()> {
@@ -27,13 +29,16 @@ async fn poll(config: &Config) -> Result<(), ()> {
         };
 
         let response = client
-            .get(format!("{}/pods?nodeName={}", config.server_url, config.name))
+            .get(format!("{}/pods?nodeId={}", config.server_url, config.node_id))
             .json(&node_info)
             .send()
             .await;
 
         match response {
-            Ok(resp) if resp.status().is_success() => return Ok(()),
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!("Assignment: {}", resp.text().await.ok().unwrap());
+                return Ok(())
+            },
             Ok(resp) => {
                 tracing::warn!("Poll attemp failed: HTTP {}", resp.status());
             }
@@ -42,14 +47,15 @@ async fn poll(config: &Config) -> Result<(), ()> {
             }
         }
 
-        sleep(Duration::from_secs(5)).await;
+        sleep(Duration::from_secs(10)).await;
     }
 
     Err(())
 }
 
+
 #[instrument]
-async fn register(config: &Config) -> Result<(), ()> {
+async fn register(config: &mut Config) -> Result<(), ()> {
     let client = Client::new();
 
     for attempt in 1..=config.register_retries {
@@ -65,7 +71,15 @@ async fn register(config: &Config) -> Result<(), ()> {
             .await;
 
         match response {
-            Ok(resp) if resp.status().is_success() => return Ok(()),
+            Ok(resp) if resp.status().is_success() => {
+                let parsed = resp.json::<CreateResponse>().await.map_err(|e| {
+                    tracing::warn!("Failed to parse register response: {}", e);
+                })?;
+
+                config.node_id = parsed.id;
+
+                return Ok(());
+            },
             Ok(resp) => {
                 tracing::warn!("Register attempt {} failed: HTTP {}", attempt, resp.status());
             }

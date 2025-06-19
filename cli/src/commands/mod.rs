@@ -8,7 +8,6 @@ use clap::ValueEnum;
 pub enum ResourceType {
     Nodes,
     Pods,
-    Services,
 }
 
 impl fmt::Display for ResourceType {
@@ -16,7 +15,6 @@ impl fmt::Display for ResourceType {
         let s = match self {
             ResourceType::Nodes => "nodes",
             ResourceType::Pods => "pods",
-            ResourceType::Services => "services",
         };
         write!(f, "{}", s)
     }

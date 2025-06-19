@@ -1,5 +1,7 @@
 use std::env;
 
+use uuid::Uuid;
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub server_url: String,
@@ -7,6 +9,7 @@ pub struct Config {
     pub name: String,
     pub register_retries: u16,
     pub node_api_workers: usize,
+    pub node_id: Uuid
 }
 
 
@@ -43,6 +46,7 @@ pub fn load_config() -> Config {
         port,
         name,
         register_retries,
-        node_api_workers
+        node_api_workers,
+        node_id: Uuid::nil()
     }
 }

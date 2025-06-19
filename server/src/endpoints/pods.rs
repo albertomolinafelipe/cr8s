@@ -1,9 +1,8 @@
 use actix_web::{web, HttpResponse, Responder};
 use crate::store::R8s;
 use tracing::instrument;
-use serde_json::json;
-use shared::models::{Spec, SpecObject};
-use shared::api::PodQueryParams;
+use shared::api::{Spec, SpecObject};
+use shared::api::{CreateResponse, PodQueryParams};
 
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -14,14 +13,17 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 
 /// List, fetch and search pods
-#[instrument(skip(_state, query))]
+#[instrument(skip(state, query))]
 async fn get(
-    _state: web::Data<R8s>,
+    state: web::Data<R8s>,
     query: web::Query<PodQueryParams>) -> impl Responder {
 
-    tracing::info!(?query.node_name, "Pod query");
+    tracing::info!(?query.node_id, "Pod query");
 
-    HttpResponse::NotImplemented().finish()
+    let pods = state.get_pods(query.node_id);
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .body(serde_json::to_string(&pods).unwrap())
 }
 
 
@@ -36,11 +38,13 @@ async fn create(
     match spec_obj.spec {
         Spec::Pod(spec) => {
             let id = state.add_pod(spec, spec_obj.metadata);
-            
-            HttpResponse::Created().json(json!({
-                "uid": id,
-                "status": "Accepted"
-            }))
+
+            let response = CreateResponse {
+                id,
+                status: "Accepted".into(),
+            };
+
+            HttpResponse::Created().json(response)
         },
         _ => HttpResponse::MethodNotAllowed().finish()
     }

@@ -1,5 +1,5 @@
 use clap::Parser;
-use shared::models::SpecObject;
+use shared::api::SpecObject;
 use serde::de::Deserialize;
 use tokio::fs;
 

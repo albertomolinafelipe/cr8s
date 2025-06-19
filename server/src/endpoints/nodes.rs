@@ -1,9 +1,8 @@
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use crate::store::R8s;
-use serde_json::json;
 use shared::{
-    models::{NodeStatus, Node},
-    api::NodeRegisterReq
+    api::{CreateResponse, NodeRegisterReq}, 
+    models::{Node, NodeStatus}
 };
 use uuid::Uuid;
 use tracing::instrument;
@@ -57,8 +56,11 @@ async fn register(
     );
 
     state.add_node(node);
-    HttpResponse::Created().json(json!({
-        "uid": id,
-        "status": "Accepted"
-    }))
+    let response = CreateResponse {
+        id,
+        status: "Accepted".into(),
+    };
+
+    HttpResponse::Created().json(response)
+
 }

@@ -1,30 +1,15 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use tabled::Tabled;
 use uuid::Uuid;
-use std::borrow::Cow;
 
-/// Represents a top-level Kubernetes-like object with metadata and a kind-specific spec.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SpecObject {
-    pub metadata: UserMetadata,
-    
-    #[serde(flatten)]
-    pub spec: Spec,
-}
 
-/// Enum representing the specification of an object based on its kind.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", content = "spec", rename_all = "PascalCase")]
-pub enum Spec {
-    Pod(PodSpec),
-    Deployment 
-}
-
-/// Enum for supported object kinds.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-enum Kind {
-    Pod,
+pub struct PodObject {
+    pub id: Uuid,
+    pub node_id: Uuid,
+    pub pod_status: PodStatus,
+    pub metadata: Metadata,
+    pub spec: PodSpec,
 }
 
 /// Specification of a Pod
@@ -62,6 +47,15 @@ pub struct UserMetadata {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Metadata {
+    pub created_at: DateTime<Utc>,
+    generation: u16,
+    modified_at: DateTime<Utc>,
+    #[serde(flatten)]
+    pub user: UserMetadata
+}
+
 /// Represents a node in the cluster.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Node {
@@ -86,59 +80,16 @@ pub enum PodStatus {
     Pending,
     Running,
     Failed,
-    Unknown,
 }
 
 
-impl std::fmt::Display for NodeStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NodeStatus::Ready => write!(f, "Ready"),
-            NodeStatus::Stopped => write!(f, "Stopped"),
+impl Metadata {
+    pub fn new(user: UserMetadata) -> Self {
+        Self { 
+            created_at: Utc::now(),
+            generation: 0,
+            modified_at: Utc::now(),
+            user
         }
-    }
-}
-
-impl std::fmt::Display for Spec {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Spec::Pod(_) => write!(f, "pod"),
-            Spec::Deployment => write!(f, "deployment")
-        }
-    }
-}
-
-
-
-impl Tabled for Node {
-    const LENGTH: usize = 5;
-
-    fn fields(&self) -> Vec<Cow<'_, str>> {
-        vec![
-            Cow::Owned(self.name.clone()),
-            Cow::Owned(self.status.to_string()),
-            Cow::Owned(self.api_url.clone()),
-            Cow::Owned(human_duration(Utc::now().signed_duration_since(self.started_at).to_std().unwrap_or_default())),
-        ]
-    }
-
-    fn headers() -> Vec<Cow<'static, str>> {
-        vec![
-            Cow::Borrowed("NAME"),
-            Cow::Borrowed("STATUS"),
-            Cow::Borrowed("ADDRESS"),
-            Cow::Borrowed("AGE"),
-        ]
-    }
-}
-
-
-fn human_duration(dur: std::time::Duration) -> String {
-    let secs = dur.as_secs();
-    match secs {
-        0..=59 => format!("{}s ago", secs),
-        60..=3599 => format!("{}m ago", secs / 60),
-        3600..=86399 => format!("{}h ago", secs / 3600),
-        _ => format!("{}d ago", secs / 86400),
     }
 }
