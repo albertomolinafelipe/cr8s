@@ -1,44 +1,67 @@
+use tokio::sync::broadcast;
 use rand::prelude::IteratorRandom;
 use dashmap::{DashMap, DashSet};
 use uuid::Uuid;
 
-use shared::models::{
-    UserMetadata, Node, PodSpec, PodStatus, PodObject, Metadata
+use shared::{
+    api::{EventType, PodEvent}, 
+    models::{
+        Metadata, Node, PodObject, PodSpec, PodStatus, UserMetadata
+    }
 };
 
 
 pub struct R8s {
     db: sled::Db,
-    pod_idx: DashMap<Uuid, DashSet<Uuid>>
+    pod_idx: DashMap<Uuid, DashSet<Uuid>>,
+    pub pod_tx: broadcast::Sender<PodEvent>,
 }
 
 
 impl R8s {
     pub fn new(db: sled::Db) -> Self {
+        let (pod_tx, _) = broadcast::channel(10);
         Self {
             db,
-            pod_idx: DashMap::new()
+            pod_idx: DashMap::new(),
+            pod_tx
         }
     }
 
-    pub fn add_pod(&self, spec: PodSpec, metadata: UserMetadata) -> Uuid {
+    pub fn add_pod(&self, spec: PodSpec, metadata: UserMetadata) -> Result<Uuid, String> {
+        let name_key = format!("pod_names/{}", metadata.name);
+
+        if self.db.get(&name_key).ok().flatten().is_some() {
+            return Err("Pod with the same name already exists".to_string());
+        }
+
         let pod = PodObject {
             id: Uuid::new_v4(),
             node_id: self.optimized_scheduler(),
             pod_status: PodStatus::Pending,
             metadata: Metadata::new(metadata),
-            spec
+            spec,
         };
+
         let key = format!("pods/{}", pod.id);
         let value = serde_json::to_vec(&pod).unwrap();
-        
-        // Insert into store and index
-        self.db.insert(key, value).ok();
+
+        self.db.insert(&key, value).ok();
+        self.db.insert(&name_key, pod.id.as_bytes()).ok();
+
         self.pod_idx.entry(pod.node_id)
             .or_insert_with(DashSet::new)
             .insert(pod.id);
-        pod.id
+
+        let event = PodEvent {
+            event_type: EventType::ADDED,
+            pod: pod.clone(),
+        };
+        let _ = self.pod_tx.send(event); 
+
+        Ok(pod.id)
     }
+
 
     pub fn get_pods(&self, query: Option<Uuid>) -> Vec<PodObject> {
         match query {
@@ -65,12 +88,30 @@ impl R8s {
     }
 
 
-    pub fn add_node(&self, node: Node) {
+    pub fn add_node(&self, node: Node) -> Result<(), String> {
+        let name_key = format!("node_names/{}", node.name);
+        let addr_key = format!("node_addrs/{}", node.addr);
+
+        if self.db.get(&name_key).ok().flatten().is_some() {
+            return Err("Node with the same name already exists".to_string());
+        }
+
+        if self.db.get(&addr_key).ok().flatten().is_some() {
+            return Err("Node with the same address already exists".to_string());
+        }
+
         let key = format!("nodes/{}", node.id);
         let value = serde_json::to_vec(&node).unwrap();
-        self.db.insert(key, value).ok();
+
+        self.db.insert(&key, value).ok();
+        self.db.insert(&name_key, node.id.as_bytes()).ok();
+        self.db.insert(&addr_key, node.id.as_bytes()).ok();
         self.pod_idx.entry(node.id).or_insert_with(DashSet::new);
+
+        Ok(())
     }
+
+
 
     pub fn get_nodes(&self) -> Vec<Node> {
         self.db.scan_prefix("nodes/")

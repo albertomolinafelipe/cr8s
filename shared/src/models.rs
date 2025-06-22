@@ -62,7 +62,7 @@ pub struct Node {
     pub id: Uuid,
     pub name: String,
     pub status: NodeStatus,
-    pub api_url: String,
+    pub addr: String,
     pub started_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
 }
@@ -90,6 +90,17 @@ impl Metadata {
             generation: 0,
             modified_at: Utc::now(),
             user
+        }
+    }
+}
+
+impl ContainerSpec {
+    pub fn new() -> Self {
+        Self { 
+            name: "name".to_string(), 
+            image: "image".to_string(), 
+            ports: Vec::new(), 
+            env:  Vec::new(),
         }
     }
 }

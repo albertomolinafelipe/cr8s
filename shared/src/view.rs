@@ -32,7 +32,7 @@ impl Tabled for Node {
         vec![
             Cow::Owned(self.name.clone()),
             Cow::Owned(self.status.to_string()),
-            Cow::Owned(self.api_url.clone()),
+            Cow::Owned(self.addr.clone()),
             Cow::Owned(human_duration(Utc::now().signed_duration_since(self.started_at).to_std().unwrap_or_default())),
         ]
     }

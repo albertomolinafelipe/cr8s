@@ -4,35 +4,53 @@ CLI := cli
 docker_image_server := r8s-server
 docker_image_node   := r8s-node
 
-.PHONY: all build docker docker-% clean
+.PHONY: all build build-% docker docker-% clean
 
 all: build docker
 
-build:
-	cargo build -p $(CLI) --release
+build-%:
+	cargo build -p $* --release
+
+build: build-$(CLI)
 	cp target/release/r8sctl .
 
-docker:
-	@for comp in $(COMPONENTS); do \
-		$(MAKE) docker-$$comp; \
-	done
+docker: docker-server docker-node
 
-docker-%:
-	@echo "Building Docker image for $*"
-	@img=$(docker_image_$*); \
+
+docker-server:
+	@echo "Building Docker image for server"
+	@img=$(docker_image_server); \
 	printf '%s\n' \
 		'FROM clux/muslrust:1.87.0-stable AS builder' \
 		'ARG COMPONENT' \
 		'WORKDIR /app' \
 		'COPY . .' \
-		'RUN cargo build -p $$COMPONENT --release' \
 		'RUN rustup target add x86_64-unknown-linux-musl && cargo build -p $$COMPONENT --release --target x86_64-unknown-linux-musl' \
 		'' \
 		'FROM scratch' \
 		'ARG COMPONENT' \
 		'COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/$$COMPONENT /usr/local/bin/$$COMPONENT' \
-		'ENTRYPOINT ["/usr/local/bin/$*"]' \
-	| { set -e; docker build --build-arg COMPONENT=$* -t $$img -f - .; }
+		'ENTRYPOINT ["/usr/local/bin/server"]' \
+	| { set -e; docker build --build-arg COMPONENT=server -t $$img -f - .; }
+
+
+docker-node:
+	@echo "Building Docker image for node"
+	@img=$(docker_image_node); \
+	printf '%s\n' \
+		'FROM clux/muslrust:1.87.0-stable AS builder' \
+		'ARG COMPONENT' \
+		'WORKDIR /app' \
+		'COPY . .' \
+		'RUN rustup target add x86_64-unknown-linux-musl && cargo build -p $$COMPONENT --release --target x86_64-unknown-linux-musl' \
+		'' \
+		'FROM docker:dind' \
+		'ARG COMPONENT' \
+		'COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/$$COMPONENT /usr/local/bin/$$COMPONENT' \
+		'COPY entrypoint.sh /entrypoint.sh' \
+		'RUN chmod +x /entrypoint.sh' \
+		'ENTRYPOINT ["/entrypoint.sh"]' \
+	| { set -e; docker build --build-arg COMPONENT=node -t $$img -f - .; }
 
 clean:
 	cargo clean

@@ -1,73 +1,77 @@
-use tracing::instrument;
 use reqwest::Client;
-use shared::api::{CreateResponse, NodeRegisterReq};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use shared::api::{CreateResponse, NodeRegisterReq, PodEvent};
 use tokio::time::{sleep, Duration};
-use crate::config::Config;
+use tokio_util::io::StreamReader;
+use futures_util::TryStreamExt;
+use crate::{state::State, runtime::handler::handle_event};
 
 
-#[instrument(skip(config))]
-pub async fn run(mut config: Config) -> Result<(), ()> {
-    register(&mut config).await.map_err(|_| {
-        tracing::error!("Failed to register after {} attempts", config.register_retries);
-    })?;
-    poll(&config).await.map_err(|_| {
-        tracing::error!("Failed to poll");
-    })?;
+pub async fn run(state: State) -> Result<(), ()> {
+    register(state.clone()).await?;
+    watch(state.clone()).await?;
 
     Ok(())
 }
 
 
-#[instrument(skip(config))]
-async fn poll(config: &Config) -> Result<(), ()> {
+async fn watch(state: State) -> Result<(), ()> {
     let client = Client::new();
-    
-    for _ in 1..=15 {
-        let node_info = NodeRegisterReq {
-            port: config.port,
-            name: config.name.clone(),
-        };
 
-        let response = client
-            .get(format!("{}/pods?nodeId={}", config.server_url, config.node_id))
-            .json(&node_info)
-            .send()
-            .await;
+    let url = format!(
+        "{}/pods?nodeId={}&watch=true",
+        state.config.server_url, state.node_id()
+    );
 
-        match response {
-            Ok(resp) if resp.status().is_success() => {
-                tracing::info!("Assignment: {}", resp.text().await.ok().unwrap());
-            },
-            Ok(resp) => {
-                tracing::warn!("Poll attemp failed: HTTP {}", resp.status());
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let byte_stream = resp
+                .bytes_stream()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+
+            let stream_reader = StreamReader::new(byte_stream);
+            let mut lines = BufReader::new(stream_reader).lines();
+
+            tracing::info!("Started watching pod assignments for {}", state.node_id());
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                match serde_json::from_str::<PodEvent>(&line) {
+                    Ok(event) => handle_event(event).await,
+                    Err(e) => {
+                        tracing::warn!("Failed to deserialize line: {}\nError: {}", line, e);
+                    }
+                }
             }
-            Err(err) => {
-                tracing::warn!("Poll attemp failed: {}", err);
-            }
+            tracing::warn!("Watch stream ended.");
         }
-
-        sleep(Duration::from_secs(10)).await;
+        Ok(resp) => {
+            tracing::error!("Watch request failed: HTTP {}", resp.status());
+        }
+        Err(err) => {
+            tracing::error!("Watch request error: {}", err);
+        }
     }
 
-    Err(())
+    Ok(())
 }
 
 
-#[instrument]
-async fn register(config: &mut Config) -> Result<(), ()> {
+async fn register(state: State) -> Result<(), ()> {
     let client = Client::new();
 
-    for attempt in 1..=config.register_retries {
+    for attempt in 1..=state.config.register_retries {
         let node_info = NodeRegisterReq {
-            port: config.port,
-            name: config.name.clone(),
+            port: state.config.port,
+            name: state.config.name.clone(),
         };
 
         let response = client
-            .post(format!("{}/nodes", config.server_url))
+            .post(format!("{}/nodes", state.config.server_url))
             .json(&node_info)
             .send()
             .await;
+
+        println!("URL: {}", state.config.server_url);
 
         match response {
             Ok(resp) if resp.status().is_success() => {
@@ -75,7 +79,9 @@ async fn register(config: &mut Config) -> Result<(), ()> {
                     tracing::warn!("Failed to parse register response: {}", e);
                 })?;
 
-                config.node_id = parsed.id;
+                state.set_id(parsed.id);
+                println!("r8s-node ready: {}", parsed.id);
+                tracing::info!("Registered in the system: {}", parsed.id);
 
                 return Ok(());
             },

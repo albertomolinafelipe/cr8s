@@ -1,19 +1,45 @@
 use std::env;
-
+use std::sync::RwLock;
+use actix_web::web;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+pub type State = web::Data<NodeState>;
+
+
+
+#[derive(Debug)]
+pub struct NodeState {
+    pub config: Config,
+    node_id: RwLock<Uuid>,
+}
+
+impl NodeState {
+    pub fn new() -> Self {
+        Self {
+            config: load_config(),
+            node_id: RwLock::new(Uuid::nil()),
+        }
+    }
+
+    pub fn node_id(&self) -> Uuid {
+        *self.node_id.read().unwrap()
+    }
+
+    pub fn set_id(&self, id: Uuid) {
+        *self.node_id.write().unwrap() = id;
+    }
+}
+
+#[derive(Debug)]
 pub struct Config {
     pub server_url: String,
     pub port: u16,
     pub name: String,
     pub register_retries: u16,
     pub node_api_workers: usize,
-    pub node_id: Uuid
 }
 
-
-pub fn load_config() -> Config {
+fn load_config() -> Config {
     let server_address = env::var("R8S_SERVER_HOST")
         .unwrap_or_else(|_| "localhost".to_string());
     
@@ -47,6 +73,5 @@ pub fn load_config() -> Config {
         name,
         register_retries,
         node_api_workers,
-        node_id: Uuid::nil()
     }
 }

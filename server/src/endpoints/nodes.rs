@@ -5,7 +5,6 @@ use shared::{
     models::{Node, NodeStatus}
 };
 use uuid::Uuid;
-use tracing::instrument;
 
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -16,7 +15,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 
 /// Get the list of nodes registered in the system
-#[instrument(skip(state))]
 async fn get(state: web::Data<R8s>) -> impl Responder {
     let nodes = state.get_nodes();
     tracing::info!(num_nodes = nodes.len(), "Retrieved cluster nodes");
@@ -27,7 +25,6 @@ async fn get(state: web::Data<R8s>) -> impl Responder {
 
 
 /// Nodes register to the service
-#[instrument(skip(state, req, payload), fields(ip, port, name))]
 async fn register(
     req: HttpRequest,
     state: web::Data<R8s>,
@@ -43,7 +40,7 @@ async fn register(
     let node = Node {
         id,
         name: payload.name.clone(),
-        api_url: format!("http://{}:{}", address, payload.port),
+        addr: format!("{}:{}", address, payload.port),
         status: NodeStatus::Ready,
         started_at: chrono::Utc::now(),
         last_heartbeat: chrono::Utc::now()
@@ -55,12 +52,15 @@ async fn register(
         "Node registered"
     );
 
-    state.add_node(node);
-    let response = CreateResponse {
-        id,
-        status: "Accepted".into(),
-    };
-
-    HttpResponse::Created().json(response)
+    match state.add_node(node) {
+        Ok(()) => {
+            let response = CreateResponse {
+                id,
+                status: "Accepted".into(),
+            };
+            HttpResponse::Created().json(response)
+        }
+        Err(e) => HttpResponse::Conflict().body(e),
+    }
 
 }
