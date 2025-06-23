@@ -120,3 +120,24 @@ async fn pod_create_repeat_name() {
 
     assert_eq!(res.status(), StatusCode::CONFLICT);
 }
+
+
+#[tokio::test]
+async fn pod_create_repeat_container_name() {
+    let s = spawn_server(false).await;
+    let client = reqwest::Client::new();
+    let req = PodManifest {
+        metadata: UserMetadata { name: "nginx-pod".to_string() },
+        spec: PodSpec {
+            containers: vec![ContainerSpec::new(), ContainerSpec::new()]
+        }
+    };
+    let res = client
+        .post(format!("{}/pods", s.address))
+        .json(&req)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}

@@ -1,21 +1,23 @@
 use reqwest::Client;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use shared::api::{CreateResponse, NodeRegisterReq, PodEvent};
+use tokio::{io::{AsyncBufReadExt, BufReader}, sync::mpsc::Sender};
+use shared::api::{CreateResponse, NodeRegisterReq, PodEvent, EventType};
 use tokio::time::{sleep, Duration};
 use tokio_util::io::StreamReader;
 use futures_util::TryStreamExt;
-use crate::{state::State, runtime::handler::handle_event};
+use uuid::Uuid;
+use crate::state::State;
 
 
-pub async fn run(state: State) -> Result<(), ()> {
+pub async fn run(state: State, tx: Sender<Uuid>) -> Result<(), ()> {
     register(state.clone()).await?;
-    watch(state.clone()).await?;
+    println!("r8s-node ready");
+    watch(state.clone(), &tx).await?;
 
     Ok(())
 }
 
 
-async fn watch(state: State) -> Result<(), ()> {
+async fn watch(state: State, tx: &Sender<Uuid>) -> Result<(), ()> {
     let client = Client::new();
 
     let url = format!(
@@ -36,7 +38,7 @@ async fn watch(state: State) -> Result<(), ()> {
 
             while let Ok(Some(line)) = lines.next_line().await {
                 match serde_json::from_str::<PodEvent>(&line) {
-                    Ok(event) => handle_event(event).await,
+                    Ok(event) => handle_event(state.clone(), event, tx).await,
                     Err(e) => {
                         tracing::warn!("Failed to deserialize line: {}\nError: {}", line, e);
                     }
@@ -71,7 +73,6 @@ async fn register(state: State) -> Result<(), ()> {
             .send()
             .await;
 
-        println!("URL: {}", state.config.server_url);
 
         match response {
             Ok(resp) if resp.status().is_success() => {
@@ -80,7 +81,6 @@ async fn register(state: State) -> Result<(), ()> {
                 })?;
 
                 state.set_id(parsed.id);
-                println!("r8s-node ready: {}", parsed.id);
                 tracing::info!("Registered in the system: {}", parsed.id);
 
                 return Ok(());
@@ -97,4 +97,20 @@ async fn register(state: State) -> Result<(), ()> {
     }
 
     Err(())
+}
+
+async fn handle_event(state: State, event: PodEvent, tx: &Sender<Uuid>) {
+    tracing::info!("Pod event {:?} - {}", event.event_type, event.pod.metadata.user.name);
+    match event.event_type {
+        EventType::ADDED => {
+            if let Err(e) = state.add_pod(&event.pod) {
+                tracing::error!("Couldn't add pod: {}", e);
+            } else if let Err(e) = tx.send(event.pod.id).await {
+                tracing::error!("Couldn't enqueue pod: {}", e);
+            }
+        }
+        _ => {
+            tracing::warn!("Unhandled event type: {:?}", event.event_type);
+        }
+    }
 }

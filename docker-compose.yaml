@@ -7,12 +7,13 @@ services:
     networks:
       - r8s-net
 
+
   r8s-node-1:
     image: r8s-node
     container_name: r8s-node-1
     privileged: true
     ports:
-      - "7621:7621"
+      - "7621"
     environment:
         NODE_PORT: 7621
         NODE_NAME: "r8s-node-1"

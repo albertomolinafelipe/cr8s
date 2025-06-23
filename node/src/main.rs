@@ -1,8 +1,11 @@
+use tokio::sync::mpsc;
 use tracing_subscriber;
 use actix_web::web;
+use uuid::Uuid;
 
-mod node_api;
-mod runtime;
+mod api;
+mod controller;
+mod worker;
 pub mod state;
 
 #[tokio::main]
@@ -11,10 +14,13 @@ async fn main() -> std::io::Result<()> {
     let app_state = web::Data::new(state);
     tracing_subscriber::fmt::init();
 
-    let server = node_api::run(app_state.clone()).await?;
-    let server_handle = tokio::spawn(server);
+    let (tx, rx) = mpsc::channel::<Uuid>(100);
 
-    if let Err(_) = runtime::run(app_state.clone()).await {
+    let server = api::run(app_state.clone()).await?;
+    let server_handle = tokio::spawn(server);
+    tokio::spawn(worker::run(app_state.clone(), rx));
+
+    if let Err(_) = controller::run(app_state.clone(), tx).await {
         std::process::exit(1);
     }
 

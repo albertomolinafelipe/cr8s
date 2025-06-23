@@ -1,5 +1,5 @@
 use actix_web::{web::{self, Bytes}, HttpResponse, Responder};
-use crate::store::R8s;
+use crate::store::{R8s, SpecError};
 use shared::api::{PodManifest, CreateResponse, PodQueryParams};
 
 
@@ -52,7 +52,7 @@ async fn create(
 ) -> impl Responder {
 
     let spec_obj = body.into_inner();
-
+    tracing::info!("Received pod manifest: {}", spec_obj.metadata.name);
     match state.add_pod(spec_obj.spec, spec_obj.metadata) {
         Ok(id) => {
             let response = CreateResponse {
@@ -61,7 +61,10 @@ async fn create(
             };
             HttpResponse::Created().json(response)
         },
-        Err(e) => HttpResponse::Conflict().body(e),
+        Err(err) => match err {
+            SpecError::Conflict(e) => HttpResponse::Conflict().body(e),
+            SpecError::WrongFormat(e) => HttpResponse::BadRequest().body(e),
+        }
     }
         
 }

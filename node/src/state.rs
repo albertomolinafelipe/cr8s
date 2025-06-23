@@ -1,16 +1,20 @@
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::RwLock;
 use actix_web::web;
+use shared::models::PodObject;
 use uuid::Uuid;
 
-pub type State = web::Data<NodeState>;
 
+pub type State = web::Data<NodeState>;
 
 
 #[derive(Debug)]
 pub struct NodeState {
     pub config: Config,
     node_id: RwLock<Uuid>,
+    pods: RwLock<HashMap<Uuid, PodObject>>,
+    pod_names: RwLock<HashSet<String>>
 }
 
 impl NodeState {
@@ -18,6 +22,8 @@ impl NodeState {
         Self {
             config: load_config(),
             node_id: RwLock::new(Uuid::nil()),
+            pods: RwLock::new(HashMap::new()),
+            pod_names: RwLock::new(HashSet::new())
         }
     }
 
@@ -27,6 +33,33 @@ impl NodeState {
 
     pub fn set_id(&self, id: Uuid) {
         *self.node_id.write().unwrap() = id;
+    }
+
+    pub fn get_pods(&self) -> Vec<String> {
+        self.pods
+            .read()
+            .unwrap()
+            .values()
+            .map(|p| p.metadata.user.name.clone())
+            .collect()
+    }
+
+    pub fn add_pod(&self, pod: &PodObject) -> Result<(), String> {
+        let mut pods = self.pods.write().unwrap();
+        let mut pod_names = self.pod_names.write().unwrap();
+
+        if pods.contains_key(&pod.id) {
+            return Err(format!("Pod with ID '{}' already exists.", pod.id));
+        }
+
+        if pod_names.contains(&pod.metadata.user.name) {
+            return Err(format!("Pod with name '{}' already exists.", pod.metadata.user.name));
+        }
+
+        pods.insert(pod.id, pod.clone());
+        pod_names.insert(pod.metadata.user.name.clone());
+
+        Ok(())
     }
 }
 

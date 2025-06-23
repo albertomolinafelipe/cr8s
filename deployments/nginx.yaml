@@ -25,3 +25,12 @@ spec:
       env:
         - name: DB_FILE
           value: /data/db.sqlite
+    - name: nginx-backup
+      image: nginx:latest
+      ports:
+        - containerPort: 80
+      env:
+        - name: ENV
+          value: production
+        - name: DEBUG
+          value: "false"

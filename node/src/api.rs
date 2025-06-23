@@ -8,8 +8,7 @@ pub async fn run(state: State) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
-            .route("/health", web::get().to(health_check))
-            .route("/logs", web::get().to(logs))
+            .route("/pods", web::get().to(pods))
             .route("/id", web::get().to(id))
             .route("/", web::get().to(root))
     })
@@ -23,15 +22,12 @@ async fn root() -> impl Responder {
     HttpResponse::Ok().body("Hello from r8s-node")
 }
 
-async fn health_check() -> impl Responder {
-    HttpResponse::NotImplemented().finish()
-}
-
-async fn logs() -> impl Responder {
-    HttpResponse::NotImplemented().finish()
-}
 
 async fn id(state: State) -> impl Responder {
     tracing::info!("Node id: {}", state.node_id());
     HttpResponse::Ok().body(state.node_id().to_string())
+}
+
+async fn pods(state: State) -> impl Responder {
+    HttpResponse::Ok().json(&state.get_pods())
 }

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use tokio::sync::broadcast;
 use rand::prelude::IteratorRandom;
 use dashmap::{DashMap, DashSet};
@@ -9,6 +11,11 @@ use shared::{
         Metadata, Node, PodObject, PodSpec, PodStatus, UserMetadata
     }
 };
+
+pub enum SpecError {
+    WrongFormat(String),
+    Conflict(String)
+}
 
 
 pub struct R8s {
@@ -28,11 +35,12 @@ impl R8s {
         }
     }
 
-    pub fn add_pod(&self, spec: PodSpec, metadata: UserMetadata) -> Result<Uuid, String> {
+    pub fn add_pod(&self, spec: PodSpec, metadata: UserMetadata) -> Result<Uuid, SpecError> {
+        validate_pod(&spec)?;
         let name_key = format!("pod_names/{}", metadata.name);
 
         if self.db.get(&name_key).ok().flatten().is_some() {
-            return Err("Pod with the same name already exists".to_string());
+            return Err(SpecError::Conflict("Pod with the same name already exists".to_string()));
         }
 
         let pod = PodObject {
@@ -127,4 +135,20 @@ impl R8s {
             .choose(&mut rng)
             .unwrap_or_else(Uuid::nil)
     }
+}
+
+
+fn validate_pod(spec: &PodSpec) -> Result<(), SpecError> {
+    let mut seen_names = HashSet::new();
+
+    for container in &spec.containers {
+        if !seen_names.insert(&container.name) {
+            return Err(SpecError::WrongFormat(format!(
+                "Duplicate container name found: '{}'",
+                container.name
+            )));
+        }
+    }
+
+    Ok(())
 }
