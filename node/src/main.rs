@@ -6,6 +6,7 @@ use uuid::Uuid;
 mod api;
 mod controller;
 mod worker;
+pub mod docker;
 pub mod state;
 
 #[tokio::main]

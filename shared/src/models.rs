@@ -75,11 +75,13 @@ pub enum NodeStatus {
 }
 
 /// Status of a Pod during its lifecycle.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum PodStatus {
     Pending,
     Running,
     Failed,
+    Succeeded,
+    Unknown,
 }
 
 

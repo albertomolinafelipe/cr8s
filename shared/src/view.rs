@@ -19,7 +19,9 @@ impl std::fmt::Display for PodStatus {
         match self {
             PodStatus::Pending => write!(f, "Pending"),
             PodStatus::Running => write!(f, "Running"),
-            PodStatus::Failed => write!(f, "Failed")
+            PodStatus::Failed => write!(f, "Failed"),
+            PodStatus::Succeeded => write!(f, "Succeeded"),
+            PodStatus::Unknown => write!(f, "Unknown")
         }
     }
 }

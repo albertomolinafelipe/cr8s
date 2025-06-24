@@ -1,30 +1,63 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use actix_web::web;
+use bollard::secret::ContainerStateStatusEnum;
+use bollard::Docker;
 use shared::models::PodObject;
 use uuid::Uuid;
+
+use crate::docker::docker_client;
 
 
 pub type State = web::Data<NodeState>;
 
+#[derive(Debug, Clone)]
+pub struct PodRuntime {
+    pub id: Uuid,
+    pub containers: Vec<ContainerRuntime>
+}
+
+#[derive(Debug, Clone)]
+pub struct ContainerRuntime {
+    pub id: String,
+    pub status: ContainerStateStatusEnum,
+}
 
 #[derive(Debug)]
 pub struct NodeState {
     pub config: Config,
+    client: Arc<Docker>,
     node_id: RwLock<Uuid>,
     pods: RwLock<HashMap<Uuid, PodObject>>,
-    pod_names: RwLock<HashSet<String>>
+    pod_runtimes: RwLock<HashMap<Uuid, PodRuntime>>,
+    pod_names: RwLock<HashSet<String>>,
+    images: RwLock<HashSet<String>>
 }
 
 impl NodeState {
     pub fn new() -> Self {
         Self {
             config: load_config(),
+            client: docker_client(),
             node_id: RwLock::new(Uuid::nil()),
             pods: RwLock::new(HashMap::new()),
-            pod_names: RwLock::new(HashSet::new())
+            pod_runtimes: RwLock::new(HashMap::new()),
+            pod_names: RwLock::new(HashSet::new()),
+            images: RwLock::new(HashSet::new()),
         }
+    }
+
+    pub fn has_image(&self, image: &str) -> bool {
+        self.images.read().unwrap().contains(image)
+    }
+
+    pub fn mark_image_as_pulled(&self, image: String) {
+        self.images.write().unwrap().insert(image);
+    }
+
+    pub fn docker_client(&self) -> Arc<Docker> {
+        self.client.clone()
     }
 
     pub fn node_id(&self) -> Uuid {
@@ -35,7 +68,15 @@ impl NodeState {
         *self.node_id.write().unwrap() = id;
     }
 
-    pub fn get_pods(&self) -> Vec<String> {
+    pub fn get_pod(&self, id: &Uuid) -> Option<PodObject>{
+        self.pods.read().unwrap().get(id).cloned()
+    }
+
+    pub fn get_pod_runtime(&self, id: &Uuid) -> Option<PodRuntime>{
+        self.pod_runtimes.read().unwrap().get(id).cloned()
+    }
+
+    pub fn get_pod_names(&self) -> Vec<String> {
         self.pods
             .read()
             .unwrap()
@@ -59,6 +100,15 @@ impl NodeState {
         pods.insert(pod.id, pod.clone());
         pod_names.insert(pod.metadata.user.name.clone());
 
+        Ok(())
+    }
+
+    pub fn add_pod_runtime(&self, pod_runtime: PodRuntime) -> Result<(), String> {
+        let mut runtimes = self.pod_runtimes.write().unwrap();
+        if runtimes.contains_key(&pod_runtime.id) {
+            return Err(format!("PodRuntime with ID '{}' already exists.", pod_runtime.id));
+        }
+        runtimes.insert(pod_runtime.id, pod_runtime);
         Ok(())
     }
 }

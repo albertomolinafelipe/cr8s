@@ -29,5 +29,5 @@ async fn id(state: State) -> impl Responder {
 }
 
 async fn pods(state: State) -> impl Responder {
-    HttpResponse::Ok().json(&state.get_pods())
+    HttpResponse::Ok().json(&state.get_pod_names())
 }
