@@ -1,6 +1,6 @@
 use reqwest::Client;
 use tokio::{io::{AsyncBufReadExt, BufReader}, sync::mpsc::Sender};
-use shared::api::{CreateResponse, NodeRegisterReq, PodEvent, EventType};
+use shared::api::{EventType, NodeRegisterReq, PodEvent};
 use tokio::time::{sleep, Duration};
 use tokio_util::io::StreamReader;
 use futures_util::TryStreamExt;
@@ -21,8 +21,8 @@ async fn watch(state: State, tx: &Sender<Uuid>) -> Result<(), ()> {
     let client = Client::new();
 
     let url = format!(
-        "{}/pods?nodeId={}&watch=true",
-        state.config.server_url, state.node_id()
+        "{}/pods?nodeName={}&watch=true",
+        state.config.server_url, state.node_name()
     );
 
     match client.get(&url).send().await {
@@ -34,7 +34,7 @@ async fn watch(state: State, tx: &Sender<Uuid>) -> Result<(), ()> {
             let stream_reader = StreamReader::new(byte_stream);
             let mut lines = BufReader::new(stream_reader).lines();
 
-            tracing::info!("Started watching pod assignments for {}", state.node_id());
+            tracing::info!("Started watching pod assignments for {}", state.node_name());
 
             while let Ok(Some(line)) = lines.next_line().await {
                 match serde_json::from_str::<PodEvent>(&line) {
@@ -60,28 +60,23 @@ async fn watch(state: State, tx: &Sender<Uuid>) -> Result<(), ()> {
 
 async fn register(state: State) -> Result<(), ()> {
     let client = Client::new();
+    let name = &state.config.name;
+    let node_info = NodeRegisterReq {
+        port: state.config.port,
+        name: state.config.name.clone(),
+    };
 
     for attempt in 1..=state.config.register_retries {
-        let node_info = NodeRegisterReq {
-            port: state.config.port,
-            name: state.config.name.clone(),
-        };
 
         let response = client
             .post(format!("{}/nodes", state.config.server_url))
             .json(&node_info)
             .send()
             .await;
-
-
         match response {
             Ok(resp) if resp.status().is_success() => {
-                let parsed = resp.json::<CreateResponse>().await.map_err(|e| {
-                    tracing::warn!("Failed to parse register response: {}", e);
-                })?;
-
-                state.set_id(parsed.id);
-                tracing::info!("Registered in the system: {}", parsed.id);
+                state.set_name(name.to_string());
+                tracing::info!("Registered in the system: {}", name);
 
                 return Ok(());
             },
@@ -102,7 +97,7 @@ async fn register(state: State) -> Result<(), ()> {
 async fn handle_event(state: State, event: PodEvent, tx: &Sender<Uuid>) {
     tracing::info!("Pod event {:?} - {}", event.event_type, event.pod.metadata.user.name);
     match event.event_type {
-        EventType::ADDED => {
+        EventType::Modified => {
             if let Err(e) = state.add_pod(&event.pod) {
                 tracing::error!("Couldn't add pod: {}", e);
             } else if let Err(e) = tx.send(event.pod.id).await {

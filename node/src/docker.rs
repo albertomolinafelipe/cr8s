@@ -73,11 +73,16 @@ pub async fn start_pod(docker: Arc<Docker>, state: &State, pod: PodObject) -> Po
             .and_then(|s| s.status.clone())
             .unwrap();
 
-        tracing::info!("Started container: id={} status={}", container_id, status);
+        tracing::info!(
+            id=%&container_id[..8.min(container_id.len())],
+            status=%status,
+            "Started container"
+        );
         container_runtimes.push(ContainerRuntime {
             id: container_id,
             status,
         });
+
     }
 
     PodRuntime {
@@ -101,6 +106,6 @@ async fn ensure_image(docker: &Docker, state: &State, image: &str) {
     while let Some(_status) = stream.try_next().await.unwrap_or(None) {
         // logging?
     }
-    tracing::info!("Pulled container image={}", image);
+    tracing::info!(image=%image, "Pulled container");
     state.mark_image_as_pulled(image.to_string());
 }

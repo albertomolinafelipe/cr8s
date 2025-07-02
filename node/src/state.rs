@@ -28,7 +28,7 @@ pub struct ContainerRuntime {
 pub struct NodeState {
     pub config: Config,
     client: Arc<Docker>,
-    node_id: RwLock<Uuid>,
+    node_name: RwLock<String>,
     pods: RwLock<HashMap<Uuid, PodObject>>,
     pod_runtimes: RwLock<HashMap<Uuid, PodRuntime>>,
     pod_names: RwLock<HashSet<String>>,
@@ -40,7 +40,7 @@ impl NodeState {
         Self {
             config: load_config(),
             client: docker_client(),
-            node_id: RwLock::new(Uuid::nil()),
+            node_name: RwLock::new(String::new()),
             pods: RwLock::new(HashMap::new()),
             pod_runtimes: RwLock::new(HashMap::new()),
             pod_names: RwLock::new(HashSet::new()),
@@ -60,12 +60,12 @@ impl NodeState {
         self.client.clone()
     }
 
-    pub fn node_id(&self) -> Uuid {
-        *self.node_id.read().unwrap()
+    pub fn node_name(&self) -> String {
+        self.node_name.read().unwrap().clone()
     }
 
-    pub fn set_id(&self, id: Uuid) {
-        *self.node_id.write().unwrap() = id;
+    pub fn set_name(&self, name: String) {
+        *self.node_name.write().unwrap() = name;
     }
 
     pub fn get_pod(&self, id: &Uuid) -> Option<PodObject>{

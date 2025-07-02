@@ -18,7 +18,7 @@ docker: docker-server docker-node
 
 
 docker-server:
-	@echo "Building Docker image for server"
+	@echo "===================> SERVER - DOCKER IMAGE"
 	@img=$(docker_image_server); \
 	printf '%s\n' \
 		'FROM clux/muslrust:1.87.0-stable AS builder' \
@@ -35,7 +35,7 @@ docker-server:
 
 
 docker-node:
-	@echo "Building Docker image for node"
+	@echo "===================> NODE - DOCKER IMAGE"
 	@img=$(docker_image_node); \
 	printf '%s\n' \
 		'FROM clux/muslrust:1.87.0-stable AS builder' \

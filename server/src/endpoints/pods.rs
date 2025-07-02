@@ -1,11 +1,12 @@
 use actix_web::{web::{self, Bytes}, HttpResponse, Responder};
-use crate::store::{R8s, SpecError};
-use shared::api::{PodManifest, CreateResponse, PodQueryParams};
+use crate::store::R8s;
+use shared::api::{CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodQueryParams};
 
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         .route("", web::get().to(get))
+        .route("/{pod_name}", web::patch().to(update))
         .route("", web::post().to(create));
 }
 
@@ -17,13 +18,28 @@ async fn get(
 ) -> impl Responder {
     if query.watch.unwrap_or(false) {
         // Watch mode
-        let mut rx = state.pod_tx.subscribe();
-        let node_id = query.node_id.clone();
-
+        let node_name = query.node_name.clone();
+        let pods = state.get_pods(node_name.clone()).await;
         let stream = async_stream::stream! {
+            // List all pods
+            for p in &pods {
+                let event = PodEvent {
+                    pod: p.clone(),
+                    event_type: EventType::Added,
+                };
+                if let Some(name) = node_name.as_deref() {
+                    if event.pod.node_name != name {
+                        continue;
+                    }
+                }
+                let json = serde_json::to_string(&event).unwrap();
+                yield Ok::<_, actix_web::Error>(Bytes::from(json + "\n"));
+            }
+            // Wacth new events
+            let mut rx = state.pod_tx.subscribe();
             while let Ok(event) = rx.recv().await {
-                if let Some(ref node_id) = node_id {
-                    if event.pod.node_id != *node_id {
+                if let Some(name) = node_name.as_deref() {
+                    if event.pod.node_name != name {
                         continue;
                     }
                 }
@@ -37,10 +53,43 @@ async fn get(
             .streaming(stream)
     } else {
         // Normal list
-        let pods = state.get_pods(query.node_id.clone());
+        let pods = state.get_pods(query.node_name.clone()).await;
         HttpResponse::Ok()
             .content_type("application/json")
             .body(serde_json::to_string(&pods).unwrap())
+    }
+}
+
+
+/// Update pod
+async fn update(
+    state: web::Data<R8s>,
+    path_string: web::Path<String>,
+    body: web::Json<PodPatch>,
+) -> impl Responder {
+    let patch = body.into_inner();
+    let pod_name = path_string.into_inner();
+    match patch.pod_field {
+        PodField::NodeName => {
+            match state.assign_pod(&pod_name, patch.value.clone()).await {
+                Ok(_) => {
+                    tracing::info!(
+                        pod=%pod_name,
+                        node=%patch.value,
+                        "Pod successfully assigned to node"
+                    );
+                    HttpResponse::NoContent().finish()
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error=%err,
+                        "Could not schedule pod"
+                    );
+                    err.to_http_response()
+                }
+            }
+        },
+        PodField::PodStatus => HttpResponse::NoContent().finish()
     }
 }
 
@@ -52,19 +101,27 @@ async fn create(
 ) -> impl Responder {
 
     let spec_obj = body.into_inner();
-    tracing::info!("Received pod manifest: {}", spec_obj.metadata.name);
-    match state.add_pod(spec_obj.spec, spec_obj.metadata) {
+    let pod_name = spec_obj.metadata.name.clone();
+    tracing::info!(name=%pod_name, "Received pod manifest");
+
+    match state.add_pod(spec_obj.spec, spec_obj.metadata).await {
         Ok(id) => {
+            tracing::info!(
+                name=%pod_name,
+                "Pod created"
+            );
             let response = CreateResponse {
                 id,
                 status: "Accepted".into(),
             };
             HttpResponse::Created().json(response)
-        },
-        Err(err) => match err {
-            SpecError::Conflict(e) => HttpResponse::Conflict().body(e),
-            SpecError::WrongFormat(e) => HttpResponse::BadRequest().body(e),
+        }
+        Err(err) => {
+            tracing::warn!(
+                error=%err,
+                "Could not create pod"
+            );
+            err.to_http_response()
         }
     }
-        
 }

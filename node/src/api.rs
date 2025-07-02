@@ -9,7 +9,7 @@ pub async fn run(state: State) -> std::io::Result<Server> {
         App::new()
             .app_data(state.clone())
             .route("/pods", web::get().to(pods))
-            .route("/id", web::get().to(id))
+            .route("/name", web::get().to(name))
             .route("/", web::get().to(root))
     })
     .bind(("0.0.0.0", port))?
@@ -23,9 +23,9 @@ async fn root() -> impl Responder {
 }
 
 
-async fn id(state: State) -> impl Responder {
-    tracing::info!("Node id: {}", state.node_id());
-    HttpResponse::Ok().body(state.node_id().to_string())
+async fn name(state: State) -> impl Responder {
+    tracing::info!("Node id: {}", state.node_name());
+    HttpResponse::Ok().body(state.node_name().to_string())
 }
 
 async fn pods(state: State) -> impl Responder {

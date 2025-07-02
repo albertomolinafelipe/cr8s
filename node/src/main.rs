@@ -1,5 +1,5 @@
 use tokio::sync::mpsc;
-use tracing_subscriber;
+use tracing_subscriber::{self, EnvFilter};
 use actix_web::web;
 use uuid::Uuid;
 
@@ -13,7 +13,11 @@ pub mod state;
 async fn main() -> std::io::Result<()> {
     let state = state::NodeState::new();
     let app_state = web::Data::new(state);
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::new("actix_server=warn,actix_web=warn,node=info")
+        )
+        .init();
 
     let (tx, rx) = mpsc::channel::<Uuid>(100);
 

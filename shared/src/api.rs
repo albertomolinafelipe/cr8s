@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::models::{PodObject, PodSpec, UserMetadata};
+use crate::models::{Node, PodObject, PodSpec, UserMetadata};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct NodeRegisterReq {
@@ -12,8 +12,8 @@ pub struct NodeRegisterReq {
 
 #[derive(Deserialize, Debug)]
 pub struct PodQueryParams {
-    #[serde(rename = "nodeId")]
-    pub node_id: Option<Uuid>,
+    #[serde(rename = "nodeName")]
+    pub node_name: Option<String>,
     pub watch: Option<bool>
 } 
 
@@ -22,7 +22,7 @@ pub struct PodQueryParams {
 pub struct CreateResponse {
     pub id: Uuid,
     pub status: String
-} 
+}
 
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -31,6 +31,8 @@ pub struct PodManifest {
     pub spec: PodSpec
 } 
 
+// ============================= EVENT
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PodEvent {
     pub event_type: EventType,
@@ -38,8 +40,33 @@ pub struct PodEvent {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NodeEvent {
+    pub event_type: EventType,
+    pub node: Node
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum EventType {
-    ADDED,
-    DELETED,
-    MODIFIED
+    #[serde(rename = "ADDED")]
+    Added,
+    #[serde(rename = "DELETED")]
+    Deleted,
+    #[serde(rename = "MODIFIED")]
+    Modified
+}
+
+// ============================= POD PATCH
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct PodPatch {
+    pub pod_field: PodField,
+    pub value: String
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub enum PodField {
+    #[serde(rename = "node_name")]
+    NodeName,
+    #[serde(rename = "pod_status")]
+    PodStatus
 }

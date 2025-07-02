@@ -17,6 +17,7 @@
             pkgs.pkg-config
             pkgs.rustc
             pkgs.cargo
+            pkgs.protobuf
           ];
 
           # Set for openssl-sys crate

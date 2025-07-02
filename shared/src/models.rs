@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PodObject {
     pub id: Uuid,
-    pub node_id: Uuid,
+    pub node_name: String,
     pub pod_status: PodStatus,
     pub metadata: Metadata,
     pub spec: PodSpec,
@@ -59,7 +59,6 @@ pub struct Metadata {
 /// Represents a node in the cluster.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Node {
-    pub id: Uuid,
     pub name: String,
     pub status: NodeStatus,
     pub addr: String,

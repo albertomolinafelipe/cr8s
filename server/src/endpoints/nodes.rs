@@ -1,26 +1,64 @@
-use actix_web::{web, HttpRequest, HttpResponse, Responder};
+use actix_web::{web::{self, Bytes}, HttpResponse, HttpRequest, Responder};
+use serde::Deserialize;
 use crate::store::R8s;
 use shared::{
-    api::{CreateResponse, NodeRegisterReq}, 
+    api::{EventType, NodeEvent, NodeRegisterReq}, 
     models::{Node, NodeStatus}
 };
-use uuid::Uuid;
 
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
+        .route("", web::get().to(get))
         .route("", web::post().to(register))
-        .route("", web::get().to(get));
+        .route("/{node_name}", web::post().to(update_status));
 }
 
 
-/// Get the list of nodes registered in the system
-async fn get(state: web::Data<R8s>) -> impl Responder {
-    let nodes = state.get_nodes();
-    tracing::info!(num_nodes = nodes.len(), "Retrieved cluster nodes");
-    HttpResponse::Ok()
-        .content_type("application/json")
-        .body(serde_json::to_string(&nodes).unwrap())
+async fn update_status(_state: web::Data<R8s>, node_name: web::Path<String>) -> impl Responder {
+    tracing::info!("Got update call for node: {}", node_name);
+    HttpResponse::NotImplemented().finish()
+}
+
+
+#[derive(Deserialize)]
+pub struct NodeQuery {
+    watch: Option<bool>,
+}
+
+/// List, fetch and search pods
+async fn get(
+    state: web::Data<R8s>,
+    query: web::Query<NodeQuery>,
+) -> impl Responder {
+    if query.watch.unwrap_or(false) {
+        // Watch mode
+        let mut rx = state.node_tx.subscribe();
+        let nodes = state.get_nodes().await; 
+        let stream = async_stream::stream! {
+            for n in nodes {
+                let event = NodeEvent {
+                    node: n,
+                    event_type: EventType::Added
+                };
+                let json = serde_json::to_string(&event).unwrap();
+                yield Ok::<_, actix_web::Error>(Bytes::from(json + "\n"));
+            }
+            while let Ok(event) = rx.recv().await {
+                let json = serde_json::to_string(&event).unwrap();
+                yield Ok::<_, actix_web::Error>(Bytes::from(json + "\n"));
+            }
+        };
+
+        HttpResponse::Ok()
+            .content_type("application/json")
+            .streaming(stream)
+    } else {
+        // Normal list
+        let nodes = state.get_nodes().await;
+        tracing::info!(num_nodes=nodes.len(), "Retrieved cluster nodes");
+        HttpResponse::Ok().json(&nodes)
+    }
 }
 
 
@@ -36,9 +74,7 @@ async fn register(
         .map(|addr| addr.ip().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
-    let id = Uuid::new_v4();
     let node = Node {
-        id,
         name: payload.name.clone(),
         addr: format!("{}:{}", address, payload.port),
         status: NodeStatus::Ready,
@@ -46,21 +82,21 @@ async fn register(
         last_heartbeat: chrono::Utc::now()
     };
 
-    tracing::info!(
-        ip = %address,
-        name = %node.name,
-        "Node registered"
-    );
-
-    match state.add_node(node) {
+    match state.add_node(&node).await {
         Ok(()) => {
-            let response = CreateResponse {
-                id,
-                status: "Accepted".into(),
-            };
-            HttpResponse::Created().json(response)
+            tracing::info!(
+                ip=%address,
+                name=%node.name,
+                "Node registered"
+            );
+            HttpResponse::Created().finish()
         }
-        Err(e) => HttpResponse::Conflict().body(e),
+        Err(err) => {
+            tracing::warn!(
+                error=%err,
+                "Could not register node"
+            );
+            err.to_http_response()
+        }
     }
-
 }
