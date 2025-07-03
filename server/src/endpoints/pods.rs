@@ -15,6 +15,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 /// List, fetch and search pods
 async fn get(state: web::Data<R8s>, query: web::Query<PodQueryParams>) -> impl Responder {
+    tracing::info!(
+        watch=%query.watch.unwrap_or(false),
+        node_name=%query.node_name.clone().unwrap_or("None".to_string()),
+        "Get pod request");
     if query.watch.unwrap_or(false) {
         // Watch mode
         let node_name = query.node_name.clone();

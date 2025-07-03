@@ -53,7 +53,6 @@ async fn pod_get_query() {
         .send()
         .await
         .unwrap();
-
     assert_eq!(
         res.status(),
         StatusCode::CREATED,
@@ -63,11 +62,9 @@ async fn pod_get_query() {
         res.json::<CreateResponse>().await.is_ok(),
         "Pod creation response should deserialize"
     );
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let res = client
         .get(format!("{}/pods?nodeName={}", s.address, n.name))
-        .json(&req)
         .send()
         .await
         .unwrap();
@@ -78,6 +75,8 @@ async fn pod_get_query() {
         "GET with nodeName should return 200 OK"
     );
     let pods = res.json::<Vec<PodObject>>().await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
     assert!(pods.len() > 0, "Expected at least one pod for the node");
     assert_eq!(
         pods[0].node_name, n.name,

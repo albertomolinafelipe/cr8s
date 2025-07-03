@@ -8,6 +8,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
 use uuid::Uuid;
 
+pub struct TestNode {
+    pub address: String,
+    pub name: String,
+    _container: ContainerAsync<GenericImage>,
+}
+
 pub struct TestControlPlane {
     pub address: String,
     pub name: String,
@@ -16,17 +22,59 @@ pub struct TestControlPlane {
     _etcd: ContainerAsync<GenericImage>,
 }
 
-pub struct TestNode {
-    pub address: String,
-    pub name: String,
-    _container: ContainerAsync<GenericImage>,
+impl TestControlPlane {
+    pub async fn new(
+        name: String,
+        network: String,
+        etcd: ContainerAsync<GenericImage>,
+        container: ContainerAsync<GenericImage>,
+    ) -> Self {
+        let stdout = container.stdout(false);
+        let reader = BufReader::new(stdout);
+        let lines = reader.lines();
+
+        spawn_log_task(lines, true, None);
+
+        let port = container
+            .get_host_port_ipv4(7620)
+            .await
+            .expect("Failed to get port");
+
+        let address = format!("http://127.0.0.1:{}", port);
+
+        TestControlPlane {
+            address,
+            name,
+            network,
+            _etcd: etcd,
+            _container: container,
+        }
+    }
 }
 
-pub async fn spawn_control_plane() -> TestControlPlane {
-    _spawn_control_plane(true, true).await
-}
-pub async fn spawn_api_server() -> TestControlPlane {
-    _spawn_control_plane(false, false).await
+impl TestNode {
+    pub async fn new(name: String, container: ContainerAsync<GenericImage>) -> Self {
+        let stdout = container.stdout(false);
+        let reader = BufReader::new(stdout);
+        let lines = reader.lines();
+
+        let short_name = name.chars().take(4).collect::<String>();
+
+        spawn_log_task(lines, false, Some(short_name));
+
+        let host_port = container
+            .get_host_port_ipv4(8081)
+            .await
+            .expect("Failed to get port");
+
+        let address = format!("http://127.0.0.1:{}", host_port);
+
+        TestNode {
+            address,
+            name,
+            _container: container,
+        }
+    }
 }
 
 async fn _spawn_control_plane(scheduler: bool, drift: bool) -> TestControlPlane {
@@ -67,20 +115,15 @@ async fn _spawn_control_plane(scheduler: bool, drift: bool) -> TestControlPlane 
         .await
         .expect("Failed to start control plane");
 
-    let port = container
-        .get_host_port_ipv4(7620)
-        .await
-        .expect("Failed to get port");
+    TestControlPlane::new(server_name, network, etcd, container).await
+}
 
-    let address = format!("http://127.0.0.1:{}", port);
+pub async fn spawn_control_plane() -> TestControlPlane {
+    _spawn_control_plane(true, true).await
+}
 
-    TestControlPlane {
-        address,
-        name: server_name,
-        network,
-        _etcd: etcd,
-        _container: container,
-    }
+pub async fn spawn_api_server() -> TestControlPlane {
+    _spawn_control_plane(false, false).await
 }
 
 pub async fn spawn_node(s: &TestControlPlane) -> TestNode {
@@ -93,35 +136,14 @@ pub async fn spawn_node(s: &TestControlPlane) -> TestNode {
         .with_env_var("R8S_SERVER_HOST", s.name.clone())
         .with_env_var("R8S_SERVER_PORT", "7620")
         .with_env_var("NODE_PORT", "8081")
-        .with_env_var("NODE_NAME", name)
+        .with_env_var("NODE_NAME", name.clone())
         .with_container_name(random_name())
         .with_network(s.network.clone())
         .start()
         .await
         .expect("Failed to start node");
 
-    let host_port = container
-        .get_host_port_ipv4(8081)
-        .await
-        .expect("Failed to get port");
-
-    let address = format!("http://127.0.0.1:{}", host_port);
-    let client = Client::new();
-
-    let name = client
-        .get(format!("{}/name", address))
-        .send()
-        .await
-        .ok()
-        .and_then(|resp| resp.error_for_status().ok())
-        .and_then(|resp| futures::executor::block_on(resp.text()).ok())
-        .unwrap_or_else(|| "<unknown>".to_string());
-
-    TestNode {
-        name,
-        address,
-        _container: container,
-    }
+    TestNode::new(name, container).await
 }
 
 pub async fn watch_stream<T, F>(url: &str, mut handle_event: F)
@@ -152,4 +174,24 @@ where
 
 fn random_name() -> String {
     Uuid::new_v4().to_string()
+}
+
+fn spawn_log_task(
+    mut lines: tokio::io::Lines<BufReader<impl tokio::io::AsyncRead + Unpin + Send + 'static>>,
+    is_control_plane: bool,
+    short_name: Option<String>,
+) {
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = lines.next_line().await {
+            if is_control_plane {
+                let prefix = "r8s-server";
+                // left-align prefix in 30 spaces, then add " | "
+                println!("\x1b[38;5;208m{:<15} | \x1b[0m{}", prefix, line);
+            } else {
+                let name = short_name.as_deref().unwrap_or("node");
+                let prefix = format!("r8s-node-{}", name);
+                println!("\x1b[34m{:<15} | \x1b[0m{}", prefix, line);
+            }
+        }
+    });
 }
