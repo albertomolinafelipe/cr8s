@@ -2,7 +2,7 @@ use std::sync::Arc;
 use serde::de::DeserializeOwned;
 use dashmap::{DashMap, DashSet};
 use reqwest::Client;
-use shared::api::{EventType, NodeEvent, PodField, PodPatch};
+use shared::api::{NodeEvent, PodField, PodPatch};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc::{self, Sender};
 use tokio_util::io::StreamReader;
@@ -10,8 +10,6 @@ use futures_util::TryStreamExt;
 use uuid::Uuid;
 use rand::seq::IteratorRandom;
 use shared::{api::PodEvent, models::{Node, PodObject}};
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path_regex};
 
 
 type State = Arc<SchedulerState>;
@@ -195,80 +193,89 @@ async fn schedule(state: State, id: Uuid) {
 }
 
 
-#[tokio::test]
-async fn test_handle_pod_event_schedule_pod() {
-    let (tx, mut rx) = mpsc::channel(10);
 
-    let mock_server = MockServer::start().await;
-    Mock::given(method("PATCH"))
-        .and(path_regex(r"^/pods/.*$"))
-        .respond_with(ResponseTemplate::new(200))
-        .mount(&mock_server)
-        .await;
-
-    let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
-
-    let pod = PodObject::new();
-
-    let node = Node::new();
-    let node_event = NodeEvent { node: node.clone(), event_type: EventType::Added };
-    handle_node_event(state.clone(), node_event);
-
-    let event = PodEvent { pod: pod.clone(), event_type: EventType::Added};
-    handle_pod_event(state.clone(), event);
-
-    // Check pod stored in state
-    assert!(state.pods.contains_key(&pod.id));
-    // Check its in the channel
-    let scheduled_pod_id = rx.recv().await.expect("Expected pod ID");
-    assert_eq!(scheduled_pod_id, pod.id);
-    schedule(state.clone(), pod.id).await;
-    let node_pods = state.pod_map.get(&node.name);
-    assert!(state.nodes.contains_key(&node.name));
-    assert!(node_pods.is_some());
-    assert!(node_pods.unwrap().contains(&pod.id));
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shared::api::EventType;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{method, path_regex};
 
 #[tokio::test]
-async fn test_handle_node_event_schedule_unscheduled_pods() {
+    async fn test_handle_pod_event_schedule_pod() {
+        let (tx, mut rx) = mpsc::channel(10);
 
-    let (tx, _rx) = mpsc::channel(10);
-    
-    let mock_server = MockServer::start().await;
-    Mock::given(method("PATCH"))
-        .and(path_regex(r"^/pods/.*$"))
-        .respond_with(ResponseTemplate::new(200))
-        .mount(&mock_server)
-        .await;
-    
-    let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
+        let mock_server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path_regex(r"^/pods/.*$"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
 
-    let pod = PodObject::new();
-    let event = PodEvent { pod: pod.clone(), event_type: EventType::Added};
-    handle_pod_event(state.clone(), event);
+        let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
-    // Check pod is unscheduled
-    let unscheduled_set = state.pod_map.get("");
-    assert!(unscheduled_set.is_some());
-    assert!(unscheduled_set.unwrap().contains(&pod.id));
+        let pod = PodObject::new();
 
-    // Send event
-    let node = Node::new();
-    let node_event = NodeEvent { node: node.clone(), event_type: EventType::Added };
-    handle_node_event(state.clone(), node_event);
+        let node = Node::new();
+        let node_event = NodeEvent { node: node.clone(), event_type: EventType::Added };
+        handle_node_event(state.clone(), node_event);
 
-    // Wait a little bit
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let event = PodEvent { pod: pod.clone(), event_type: EventType::Added};
+        handle_pod_event(state.clone(), event);
 
-    // Pod should now be assigned
-    let node_pods = state.pod_map.get(&node.name);
-    assert!(state.nodes.contains_key(&node.name));
-    assert!(node_pods.is_some());
-    assert!(node_pods.unwrap().contains(&pod.id));
+        // Check pod stored in state
+        assert!(state.pods.contains_key(&pod.id));
+        // Check its in the channel
+        let scheduled_pod_id = rx.recv().await.expect("Expected pod ID");
+        assert_eq!(scheduled_pod_id, pod.id);
+        schedule(state.clone(), pod.id).await;
+        let node_pods = state.pod_map.get(&node.name);
+        assert!(state.nodes.contains_key(&node.name));
+        assert!(node_pods.is_some());
+        assert!(node_pods.unwrap().contains(&pod.id));
+    }
 
-    // Pod should no longer be in the unscheduled pod set
-    let unscheduled_pods = state.pod_map.get("");
-    if let Some(set) = unscheduled_pods {
-        assert!(!set.contains(&pod.id));
+#[tokio::test]
+    async fn test_handle_node_event_schedule_unscheduled_pods() {
+
+        let (tx, _rx) = mpsc::channel(10);
+
+        let mock_server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path_regex(r"^/pods/.*$"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
+
+        let pod = PodObject::new();
+        let event = PodEvent { pod: pod.clone(), event_type: EventType::Added};
+        handle_pod_event(state.clone(), event);
+
+        // Check pod is unscheduled
+        let unscheduled_set = state.pod_map.get("");
+        assert!(unscheduled_set.is_some());
+        assert!(unscheduled_set.unwrap().contains(&pod.id));
+
+        // Send event
+        let node = Node::new();
+        let node_event = NodeEvent { node: node.clone(), event_type: EventType::Added };
+        handle_node_event(state.clone(), node_event);
+
+        // Wait a little bit
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Pod should now be assigned
+        let node_pods = state.pod_map.get(&node.name);
+        assert!(state.nodes.contains_key(&node.name));
+        assert!(node_pods.is_some());
+        assert!(node_pods.unwrap().contains(&pod.id));
+
+        // Pod should no longer be in the unscheduled pod set
+        let unscheduled_pods = state.pod_map.get("");
+        if let Some(set) = unscheduled_pods {
+            assert!(!set.contains(&pod.id));
+        }
     }
 }
