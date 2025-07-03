@@ -1,8 +1,8 @@
-pub mod get;
 pub mod apply;
+pub mod get;
 
-use std::fmt;
 use clap::ValueEnum;
+use std::fmt;
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]
 pub enum ResourceType {

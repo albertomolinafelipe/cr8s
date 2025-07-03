@@ -9,40 +9,37 @@ pub struct NodeRegisterReq {
     pub name: String,
 }
 
-
 #[derive(Deserialize, Debug)]
 pub struct PodQueryParams {
     #[serde(rename = "nodeName")]
     pub node_name: Option<String>,
-    pub watch: Option<bool>
-} 
-
+    pub watch: Option<bool>,
+}
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CreateResponse {
     pub id: Uuid,
-    pub status: String
+    pub status: String,
 }
-
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct PodManifest {
     pub metadata: UserMetadata,
-    pub spec: PodSpec
-} 
+    pub spec: PodSpec,
+}
 
 // ============================= EVENT
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PodEvent {
     pub event_type: EventType,
-    pub pod: PodObject
+    pub pod: PodObject,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeEvent {
     pub event_type: EventType,
-    pub node: Node
+    pub node: Node,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -52,7 +49,7 @@ pub enum EventType {
     #[serde(rename = "DELETED")]
     Deleted,
     #[serde(rename = "MODIFIED")]
-    Modified
+    Modified,
 }
 
 // ============================= POD PATCH
@@ -60,7 +57,7 @@ pub enum EventType {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct PodPatch {
     pub pod_field: PodField,
-    pub value: String
+    pub value: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -68,5 +65,5 @@ pub enum PodField {
     #[serde(rename = "node_name")]
     NodeName,
     #[serde(rename = "pod_status")]
-    PodStatus
+    PodStatus,
 }

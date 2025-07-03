@@ -1,31 +1,26 @@
+use crate::state::{ContainerRuntime, PodRuntime};
+use bollard::{
+    Docker,
+    container::{Config, CreateContainerOptions, InspectContainerOptions, StartContainerOptions},
+    image::CreateImageOptions,
+};
 use dashmap::DashSet;
+use futures_util::stream::TryStreamExt;
 use shared::models::PodObject;
 use std::collections::HashMap;
-use bollard::{
-    container::{
-        Config, 
-        CreateContainerOptions, 
-        InspectContainerOptions, 
-        StartContainerOptions}, 
-    image::CreateImageOptions, 
-    Docker
-};
-use futures_util::stream::TryStreamExt;
-use crate::state::{ContainerRuntime, PodRuntime};
-
 
 #[derive(Debug)]
 pub struct DockerManager {
     images: DashSet<String>,
-    client: Docker
+    client: Docker,
 }
 
 impl DockerManager {
     pub fn new() -> Self {
-        DockerManager { 
+        DockerManager {
             images: DashSet::new(),
             client: Docker::connect_with_local_defaults()
-                .expect("Failed to connect to Docker daemon")
+                .expect("Failed to connect to Docker daemon"),
         }
     }
 
@@ -33,17 +28,16 @@ impl DockerManager {
         self.client.clone()
     }
 
-    pub fn has_image(&self, image: &str) -> bool {
+    fn has_image(&self, image: &str) -> bool {
         self.images.contains(image)
     }
 
-    pub fn mark_image_as_pulled(&self, image: String) {
+    fn mark_image_as_pulled(&self, image: String) {
         self.images.insert(image);
     }
 
-
     pub async fn start_pod(&self, pod: PodObject) -> PodRuntime {
-        let docker = self.client.clone();
+        let docker = self.client();
         let mut container_runtimes = Vec::new();
         for container_spec in &pod.spec.containers {
             self.ensure_image(&docker, &container_spec.image).await;
@@ -54,23 +48,24 @@ impl DockerManager {
                 image: Some(container_spec.image.clone()),
                 env: Some(
                     container_spec
-                    .env
-                    .iter()
-                    .map(|env| format!("{}={}", env.name, env.value))
-                    .collect(),
+                        .env
+                        .iter()
+                        .map(|env| format!("{}={}", env.name, env.value))
+                        .collect(),
                 ),
                 exposed_ports: Some(
                     container_spec
-                    .ports
-                    .iter()
-                    .map(|p| (format!("{}/tcp", p.container_port), HashMap::new()))
-                    .collect(),
+                        .ports
+                        .iter()
+                        .map(|p| (format!("{}/tcp", p.container_port), HashMap::new()))
+                        .collect(),
                 ),
                 ..Default::default()
             };
 
             let options = Some(CreateContainerOptions {
-                name: &container_name, platform: None
+                name: &container_name,
+                platform: None,
             });
 
             let create_response = docker
@@ -103,9 +98,9 @@ impl DockerManager {
             );
             container_runtimes.push(ContainerRuntime {
                 id: container_id,
+                name: container_name,
                 status,
             });
-
         }
 
         PodRuntime {
@@ -113,7 +108,6 @@ impl DockerManager {
             containers: container_runtimes,
         }
     }
-
 
     async fn ensure_image(&self, docker: &Docker, image: &str) {
         if self.has_image(image) {

@@ -1,9 +1,10 @@
-use reqwest::Client;
+use crate::state::State;
+use bollard::secret::ContainerStateStatusEnum;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
-use crate::state::State;
 
-pub async fn run(state: State, mut rx: Receiver<Uuid>) {
+pub async fn run(state: State, mut rx: Receiver<Uuid>) -> Result<(), String> {
+    tracing::info!(" - Starting reconciliation worker");
     tokio::spawn(async move {
         while let Some(pod_id) = rx.recv().await {
             let app_state = state.clone();
@@ -12,10 +13,10 @@ pub async fn run(state: State, mut rx: Receiver<Uuid>) {
             });
         }
     });
+    Ok(())
 }
 
 async fn reconciliate(state: State, id: Uuid) {
-    
     let Some(pod) = state.get_pod(&id) else {
         tracing::warn!("Pod {}, not found in pod manager", id);
         return;
@@ -27,14 +28,10 @@ async fn reconciliate(state: State, id: Uuid) {
     }
 
     let runtime = state.docker_mgr.start_pod(pod).await;
+    runtime.containers.iter().for_each(|c| {
+        if c.status != ContainerStateStatusEnum::RUNNING {
+            tracing::warn!(name=%c.name, "Container didn't start");
+        }
+    });
     state.add_pod_runtime(runtime).ok();
-
-    // Take action to fix it
-    let client = Client::new();
-    let response = client
-        .post(format!("{}/nodes/nodeName", state.config.server_url))
-        .send()
-        .await
-        .unwrap();
-    println!("Received {} from control-plane status endpoint", response.status());
 }

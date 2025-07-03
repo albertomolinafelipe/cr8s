@@ -1,21 +1,20 @@
-use actix_web::{web::{self, Bytes}, HttpResponse, Responder};
 use crate::store::R8s;
-use shared::api::{CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodQueryParams};
-
+use actix_web::{
+    HttpResponse, Responder,
+    web::{self, Bytes},
+};
+use shared::api::{
+    CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodQueryParams,
+};
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg
-        .route("", web::get().to(get))
+    cfg.route("", web::get().to(get))
         .route("/{pod_name}", web::patch().to(update))
         .route("", web::post().to(create));
 }
 
-
 /// List, fetch and search pods
-async fn get(
-    state: web::Data<R8s>,
-    query: web::Query<PodQueryParams>,
-) -> impl Responder {
+async fn get(state: web::Data<R8s>, query: web::Query<PodQueryParams>) -> impl Responder {
     if query.watch.unwrap_or(false) {
         // Watch mode
         let node_name = query.node_name.clone();
@@ -60,7 +59,6 @@ async fn get(
     }
 }
 
-
 /// Update pod
 async fn update(
     state: web::Data<R8s>,
@@ -70,36 +68,29 @@ async fn update(
     let patch = body.into_inner();
     let pod_name = path_string.into_inner();
     match patch.pod_field {
-        PodField::NodeName => {
-            match state.assign_pod(&pod_name, patch.value.clone()).await {
-                Ok(_) => {
-                    tracing::info!(
-                        pod=%pod_name,
-                        node=%patch.value,
-                        "Pod successfully assigned to node"
-                    );
-                    HttpResponse::NoContent().finish()
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        error=%err,
-                        "Could not schedule pod"
-                    );
-                    err.to_http_response()
-                }
+        PodField::NodeName => match state.assign_pod(&pod_name, patch.value.clone()).await {
+            Ok(_) => {
+                tracing::info!(
+                    pod=%pod_name,
+                    node=%patch.value,
+                    "Pod successfully assigned to node"
+                );
+                HttpResponse::NoContent().finish()
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error=%err,
+                    "Could not schedule pod"
+                );
+                err.to_http_response()
             }
         },
-        PodField::PodStatus => HttpResponse::NoContent().finish()
+        PodField::PodStatus => HttpResponse::NoContent().finish(),
     }
 }
 
-
 /// Add spec object to the system
-async fn create(
-    state: web::Data<R8s>,
-    body: web::Json<PodManifest>,
-) -> impl Responder {
-
+async fn create(state: web::Data<R8s>, body: web::Json<PodManifest>) -> impl Responder {
     let spec_obj = body.into_inner();
     let pod_name = spec_obj.metadata.name.clone();
     tracing::info!(name=%pod_name, "Received pod manifest");

@@ -1,16 +1,14 @@
-use std::{collections::HashSet, fmt};
-use futures::future::join_all;
 use actix_web::HttpResponse;
-use etcd_client::GetOptions;
-use tokio::sync::broadcast;
 use dashmap::{DashMap, DashSet};
+use etcd_client::GetOptions;
+use futures::future::join_all;
+use std::{collections::HashSet, fmt};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use shared::{
-    api::{EventType, NodeEvent, PodEvent}, 
-    models::{
-        Metadata, Node, PodObject, PodSpec, PodStatus, UserMetadata
-    }
+    api::{EventType, NodeEvent, PodEvent},
+    models::{Metadata, Node, PodObject, PodSpec, PodStatus, UserMetadata},
 };
 
 pub enum StoreError {
@@ -18,7 +16,7 @@ pub enum StoreError {
     Conflict(String),
     UnexpectedError(String),
     NotFound(String),
-    InvalidReference(String)
+    InvalidReference(String),
 }
 
 impl StoreError {
@@ -27,8 +25,12 @@ impl StoreError {
             StoreError::WrongFormat(msg) => HttpResponse::BadRequest().body(msg.clone()),
             StoreError::Conflict(msg) => HttpResponse::Conflict().body(msg.clone()),
             StoreError::NotFound(msg) => HttpResponse::NotFound().body(msg.clone()),
-            StoreError::InvalidReference(msg) => HttpResponse::UnprocessableEntity().body(msg.clone()),
-            StoreError::UnexpectedError(_) => HttpResponse::InternalServerError().body("Unexpected error"),
+            StoreError::InvalidReference(msg) => {
+                HttpResponse::UnprocessableEntity().body(msg.clone())
+            }
+            StoreError::UnexpectedError(_) => {
+                HttpResponse::InternalServerError().body("Unexpected error")
+            }
         }
     }
 }
@@ -53,15 +55,15 @@ pub struct R8s {
     node_addrs: DashSet<String>,
     /// Assigned pods per node
     pod_map: DashMap<String, DashSet<Uuid>>,
-    pod_name_idx: DashMap<String, Uuid>
+    pod_name_idx: DashMap<String, Uuid>,
 }
-
 
 impl R8s {
     pub async fn new() -> Self {
         let (pod_tx, _) = broadcast::channel(10);
         let (node_tx, _) = broadcast::channel(10);
-        let etcd_addr = std::env::var("ETCD_ADDR").unwrap_or_else(|_| "http://etcd:2379".to_string());
+        let etcd_addr =
+            std::env::var("ETCD_ADDR").unwrap_or_else(|_| "http://etcd:2379".to_string());
         tracing::info!(addr=%etcd_addr, "Connecting to etcd");
         let etcd = etcd_client::Client::connect([&etcd_addr], None)
             .await
@@ -90,16 +92,19 @@ impl R8s {
             node_name: "".to_string(),
             pod_status: PodStatus::Pending,
             metadata: Metadata::new(metadata),
-            spec
+            spec,
         };
         let key = format!("/pods/{}", pod.id);
-        let value = serde_json::to_string(&pod)
-            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+        let value =
+            serde_json::to_string(&pod).map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
 
         // Into store and name index
         let mut etcd = self.etcd.clone();
-        etcd.put(key, value, None).await.map_err(|e| StoreError::UnexpectedError(e.to_string()))?;  
-        self.pod_name_idx.insert(pod.metadata.user.name.clone(), pod.id);
+        etcd.put(key, value, None)
+            .await
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+        self.pod_name_idx
+            .insert(pod.metadata.user.name.clone(), pod.id);
         self.pod_map
             .entry("".to_string())
             .or_insert_with(DashSet::new)
@@ -109,41 +114,56 @@ impl R8s {
             event_type: EventType::Added,
             pod: pod.clone(),
         };
-        let _ = self.pod_tx.send(event); 
+        let _ = self.pod_tx.send(event);
         Ok(pod.id)
     }
 
     pub async fn assign_pod(&self, name: &str, node_name: String) -> Result<(), StoreError> {
-
         // Check node name exists
         (self.node_names.contains(&node_name))
             .then_some(())
-            .ok_or_else(|| StoreError::InvalidReference(format!("No node exists with name={}", node_name)))?;
+            .ok_or_else(|| {
+                StoreError::InvalidReference(format!("No node exists with name={}", node_name))
+            })?;
 
         // Check pod name exists and its in the unassigned set
-        let Some(pod_id)  = self.pod_name_idx.get(name) else {
-            return Err(StoreError::NotFound(format!("No pod exists with name={}", name)));
+        let Some(pod_id) = self.pod_name_idx.get(name) else {
+            return Err(StoreError::NotFound(format!(
+                "No pod exists with name={}",
+                name
+            )));
         };
 
-        let unassigned_entry = self.pod_map.entry("".to_string()).or_insert_with(DashSet::new);
+        let unassigned_entry = self
+            .pod_map
+            .entry("".to_string())
+            .or_insert_with(DashSet::new);
         if !unassigned_entry.contains(&*pod_id) {
-            return Err(StoreError::Conflict(format!("Pod ({}) is not in the unassigned set", name)));
+            return Err(StoreError::Conflict(format!(
+                "Pod ({}) is not in the unassigned set",
+                name
+            )));
         }
 
         // Check pod is unassigned
         let mut pod = self.fetch_pod(*pod_id).await?;
         if !pod.node_name.is_empty() {
-            return Err(StoreError::Conflict(format!("Pod ({}) is already assigned to a node", name)));
+            return Err(StoreError::Conflict(format!(
+                "Pod ({}) is already assigned to a node",
+                name
+            )));
         }
-        
+
         // Assign and insert pod
         pod.node_name = node_name.clone();
         let key = format!("/pods/{}", pod.id);
-        let value = serde_json::to_string(&pod)
-            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+        let value =
+            serde_json::to_string(&pod).map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
         let mut etcd = self.etcd.clone();
-        etcd.put(key, value, None).await.map_err(|e| StoreError::UnexpectedError(e.to_string()))?;  
-       
+        etcd.put(key, value, None)
+            .await
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+
         // Update indeces
         unassigned_entry.remove(&*pod_id);
         self.pod_map
@@ -154,7 +174,7 @@ impl R8s {
             event_type: EventType::Modified,
             pod: pod.clone(),
         };
-        let _ = self.pod_tx.send(event); 
+        let _ = self.pod_tx.send(event);
         Ok(())
     }
 
@@ -177,7 +197,10 @@ impl R8s {
             }
             None => {
                 let mut etcd = self.etcd.clone();
-                let resp = match etcd.get("/pods/", Some(GetOptions::new().with_prefix())).await {
+                let resp = match etcd
+                    .get("/pods/", Some(GetOptions::new().with_prefix()))
+                    .await
+                {
                     Ok(resp) => resp,
                     Err(e) => {
                         tracing::error!(error=%e, "Could not fetch pods");
@@ -187,17 +210,16 @@ impl R8s {
                 resp.kvs()
                     .iter()
                     .filter_map(|kv| {
-                        kv.value_str().ok()
+                        kv.value_str()
+                            .ok()
                             .and_then(|val| serde_json::from_str::<PodObject>(val).ok())
                     })
-                .collect()
+                    .collect()
             }
         }
     }
 
-
     pub async fn add_node(&self, node: &Node) -> Result<(), StoreError> {
-
         (!node.name.is_empty())
             .then_some(())
             .ok_or_else(|| StoreError::WrongFormat("Node name is empty".to_string()))?;
@@ -208,11 +230,13 @@ impl R8s {
 
         // Into store
         let key = format!("/nodes/{}", node.name);
-        let value = serde_json::to_string(node)
-            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+        let value =
+            serde_json::to_string(node).map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
 
         let mut etcd = self.etcd.clone();
-        etcd.put(key, value, None).await.map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+        etcd.put(key, value, None)
+            .await
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
         // Into index
         self.node_addrs.insert(node.addr.clone());
         self.node_names.insert(node.name.clone());
@@ -221,39 +245,46 @@ impl R8s {
             event_type: EventType::Added,
             node: node.clone(),
         };
-        let _ = self.node_tx.send(event); 
+        let _ = self.node_tx.send(event);
         Ok(())
     }
 
     pub async fn get_nodes(&self) -> Vec<Node> {
         let mut etcd = self.etcd.clone();
 
-        let resp = match etcd.get("/nodes/", Some(GetOptions::new().with_prefix())).await {
+        let resp = match etcd
+            .get("/nodes/", Some(GetOptions::new().with_prefix()))
+            .await
+        {
             Ok(resp) => resp,
             Err(e) => {
                 tracing::error!(error=%e, "Could not fetch nodes");
-                return vec![]
+                return vec![];
             }
         };
 
         resp.kvs()
             .iter()
             .filter_map(|kv| {
-                kv.value_str().ok()
+                kv.value_str()
+                    .ok()
                     .and_then(|val| serde_json::from_str::<Node>(val).ok())
             })
-        .collect()
+            .collect()
     }
 
     async fn fetch_pod(&self, id: Uuid) -> Result<PodObject, StoreError> {
         let mut etcd = self.etcd.clone();
         let key = format!("/pods/{}", id);
 
-        let resp = etcd.get(key, None).await.map_err(|e| {
-            StoreError::UnexpectedError(e.to_string())
-        })?;
+        let resp = etcd
+            .get(key, None)
+            .await
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
 
-        let kv = resp.kvs().first()
+        let kv = resp
+            .kvs()
+            .first()
             .ok_or_else(|| StoreError::UnexpectedError(format!("No pod with id={}", id)))?
             .value_str()
             .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
@@ -263,7 +294,6 @@ impl R8s {
 
         Ok(pod)
     }
-
 }
 
 /// Check for duplicate container name in spec
@@ -281,4 +311,3 @@ fn validate_pod(spec: &PodSpec) -> Result<(), StoreError> {
 
     Ok(())
 }
-

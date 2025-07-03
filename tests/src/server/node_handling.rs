@@ -1,6 +1,9 @@
-use crate::common::{spawn_node, spawn_control_plane, watch_stream};
+use crate::common::{spawn_control_plane, spawn_node, watch_stream};
 use reqwest::StatusCode;
-use shared::{api::{NodeEvent, NodeRegisterReq}, models::Node};
+use shared::{
+    api::{NodeEvent, NodeRegisterReq},
+    models::Node,
+};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::timeout;
@@ -17,7 +20,11 @@ async fn nodes_get_empty() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::OK, "GET /nodes should return 200 OK");
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "GET /nodes should return 200 OK"
+    );
     let pods = res.json::<Vec<Node>>().await.unwrap();
     assert!(pods.is_empty(), "Node list should be empty");
 }
@@ -29,7 +36,7 @@ async fn node_register_and_get() {
     let client = reqwest::Client::new();
     let req = NodeRegisterReq {
         port: 1000,
-        name: "node".to_string()
+        name: "node".to_string(),
     };
 
     let res = client
@@ -39,7 +46,11 @@ async fn node_register_and_get() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "Node registration should return 201 Created");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "Node registration should return 201 Created"
+    );
 
     let res = client
         .get(format!("{}/nodes", s.address))
@@ -47,9 +58,17 @@ async fn node_register_and_get() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::OK, "GET /nodes should return 200 OK after registration");
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "GET /nodes should return 200 OK after registration"
+    );
     let nodes = res.json::<Vec<Node>>().await.unwrap();
-    assert_eq!(nodes.len(), 1, "There should be exactly one registered node");
+    assert_eq!(
+        nodes.len(),
+        1,
+        "There should be exactly one registered node"
+    );
     assert_eq!(nodes[0].name, "node", "Registered node name should match");
 }
 
@@ -99,7 +118,7 @@ async fn node_register_repeat_name() {
     let client = reqwest::Client::new();
     let req = NodeRegisterReq {
         port: 1000,
-        name: "node".to_string()
+        name: "node".to_string(),
     };
 
     let res = client
@@ -109,11 +128,15 @@ async fn node_register_repeat_name() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "First registration should succeed");
-    
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "First registration should succeed"
+    );
+
     let req = NodeRegisterReq {
         port: 1001,
-        name: "node".to_string()
+        name: "node".to_string(),
     };
 
     let res = client
@@ -123,7 +146,11 @@ async fn node_register_repeat_name() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CONFLICT, "Duplicate node name should return 409 Conflict");
+    assert_eq!(
+        res.status(),
+        StatusCode::CONFLICT,
+        "Duplicate node name should return 409 Conflict"
+    );
 }
 
 /// Should reject a second node registration with the same IP+port combination
@@ -134,7 +161,7 @@ async fn node_register_repeat_addr() {
     let client = reqwest::Client::new();
     let req = NodeRegisterReq {
         port: 1000,
-        name: "node".to_string()
+        name: "node".to_string(),
     };
 
     let res = client
@@ -143,11 +170,15 @@ async fn node_register_repeat_addr() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CREATED, "First registration should succeed");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "First registration should succeed"
+    );
 
     let req = NodeRegisterReq {
         port: 1000,
-        name: "new_node".to_string()
+        name: "new_node".to_string(),
     };
 
     let res = client
@@ -157,5 +188,9 @@ async fn node_register_repeat_addr() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CONFLICT, "Duplicate address should return 409 Conflict");
+    assert_eq!(
+        res.status(),
+        StatusCode::CONFLICT,
+        "Duplicate address should return 409 Conflict"
+    );
 }

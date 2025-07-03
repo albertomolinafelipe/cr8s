@@ -1,10 +1,13 @@
-use std::{sync::{Arc, Mutex}, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use crate::common::{spawn_api_server, spawn_control_plane, spawn_node, watch_stream};
 use reqwest::StatusCode;
 use shared::{
-    api::{CreateResponse, PodEvent, PodField, PodManifest, PodPatch}, 
-    models::{ContainerSpec, PodObject, PodSpec, UserMetadata}
+    api::{CreateResponse, PodEvent, PodField, PodManifest, PodPatch},
+    models::{ContainerSpec, PodObject, PodSpec, UserMetadata},
 };
 use tokio::time::timeout;
 
@@ -19,7 +22,11 @@ async fn pod_get_empty() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::OK, "GET /pods should return 200 OK");
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "GET /pods should return 200 OK"
+    );
     let pods = res.json::<Vec<PodObject>>().await.unwrap();
     assert!(pods.is_empty(), "Pod list should be empty initially");
 }
@@ -32,10 +39,12 @@ async fn pod_get_query() {
     let client = reqwest::Client::new();
 
     let req = PodManifest {
-        metadata: UserMetadata { name: "nginx-pod".to_string() },
+        metadata: UserMetadata {
+            name: "nginx-pod".to_string(),
+        },
         spec: PodSpec {
-            containers: vec![ContainerSpec::new()]
-        }
+            containers: vec![ContainerSpec::new()],
+        },
     };
 
     let res = client
@@ -45,8 +54,15 @@ async fn pod_get_query() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "Pod creation should return 201 Created");
-    assert!(res.json::<CreateResponse>().await.is_ok(), "Pod creation response should deserialize");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "Pod creation should return 201 Created"
+    );
+    assert!(
+        res.json::<CreateResponse>().await.is_ok(),
+        "Pod creation response should deserialize"
+    );
 
     tokio::time::sleep(Duration::from_millis(500)).await;
     let res = client
@@ -55,11 +71,18 @@ async fn pod_get_query() {
         .send()
         .await
         .unwrap();
-    
-    assert_eq!(res.status(), StatusCode::OK, "GET with nodeName should return 200 OK");
+
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "GET with nodeName should return 200 OK"
+    );
     let pods = res.json::<Vec<PodObject>>().await.unwrap();
     assert!(pods.len() > 0, "Expected at least one pod for the node");
-    assert_eq!(pods[0].node_name, n.name, "Pod should be assigned to the correct node");
+    assert_eq!(
+        pods[0].node_name, n.name,
+        "Pod should be assigned to the correct node"
+    );
 }
 
 /// Should stream pod events: one before assignment (nodeName="") and one after (nodeName=<node>)
@@ -108,8 +131,15 @@ async fn pod_get_watch() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "Pod creation should return 201 Created");
-    assert!(res.json::<CreateResponse>().await.is_ok(), "Pod creation response should deserialize");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "Pod creation should return 201 Created"
+    );
+    assert!(
+        res.json::<CreateResponse>().await.is_ok(),
+        "Pod creation response should deserialize"
+    );
 
     // Wait for both events
     let received = timeout(Duration::from_secs(3), async {
@@ -131,17 +161,19 @@ async fn pod_get_watch() {
     let empty = empty_events.lock().unwrap();
     let named = named_events.lock().unwrap();
 
-    assert_eq!(empty.len(), 1, "Should receive 1 event on empty nodeName watch");
+    assert_eq!(
+        empty.len(),
+        1,
+        "Should receive 1 event on empty nodeName watch"
+    );
     assert_eq!(named.len(), 1, "Should receive 1 event on named node watch");
 
     assert_eq!(
-        empty[0].pod.node_name,
-        "",
+        empty[0].pod.node_name, "",
         "First event (before assignment) should have empty node name"
     );
     assert_eq!(
-        named[0].pod.node_name,
-        n.name,
+        named[0].pod.node_name, n.name,
         "Second event (after assignment) should match node name"
     );
 
@@ -155,10 +187,12 @@ async fn pod_create_and_get() {
     let s = spawn_control_plane().await;
     let client = reqwest::Client::new();
     let req = PodManifest {
-        metadata: UserMetadata { name: "nginx-pod".to_string() },
+        metadata: UserMetadata {
+            name: "nginx-pod".to_string(),
+        },
         spec: PodSpec {
-            containers: vec![ContainerSpec::new()]
-        }
+            containers: vec![ContainerSpec::new()],
+        },
     };
     let res = client
         .post(format!("{}/pods", s.address))
@@ -167,8 +201,15 @@ async fn pod_create_and_get() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "Pod creation should return 201 Created");
-    assert!(res.json::<CreateResponse>().await.is_ok(), "Pod creation response should deserialize");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "Pod creation should return 201 Created"
+    );
+    assert!(
+        res.json::<CreateResponse>().await.is_ok(),
+        "Pod creation response should deserialize"
+    );
 
     let res = client
         .get(format!("{}/pods", s.address))
@@ -176,10 +217,17 @@ async fn pod_create_and_get() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::OK, "GET /pods should return 200 OK");
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "GET /pods should return 200 OK"
+    );
     let pods = res.json::<Vec<PodObject>>().await.unwrap();
     assert_eq!(pods.len(), 1, "Should return exactly one pod");
-    assert_eq!(pods[0].metadata.user.name, "nginx-pod", "Pod name should match submitted manifest");
+    assert_eq!(
+        pods[0].metadata.user.name, "nginx-pod",
+        "Pod name should match submitted manifest"
+    );
 }
 
 /// Should fail to create a second pod with the same name
@@ -188,10 +236,12 @@ async fn pod_create_repeat_name() {
     let s = spawn_control_plane().await;
     let client = reqwest::Client::new();
     let req = PodManifest {
-        metadata: UserMetadata { name: "nginx-pod".to_string() },
+        metadata: UserMetadata {
+            name: "nginx-pod".to_string(),
+        },
         spec: PodSpec {
-            containers: vec![ContainerSpec::new()]
-        }
+            containers: vec![ContainerSpec::new()],
+        },
     };
     let res = client
         .post(format!("{}/pods", s.address))
@@ -200,8 +250,15 @@ async fn pod_create_repeat_name() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "First pod creation should succeed");
-    assert!(res.json::<CreateResponse>().await.is_ok(), "First pod creation response should deserialize");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "First pod creation should succeed"
+    );
+    assert!(
+        res.json::<CreateResponse>().await.is_ok(),
+        "First pod creation response should deserialize"
+    );
 
     let res = client
         .post(format!("{}/pods", s.address))
@@ -210,7 +267,11 @@ async fn pod_create_repeat_name() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CONFLICT, "Duplicate pod name should return 409 Conflict");
+    assert_eq!(
+        res.status(),
+        StatusCode::CONFLICT,
+        "Duplicate pod name should return 409 Conflict"
+    );
 }
 
 /// Should reject pod creation with duplicate container names
@@ -219,10 +280,12 @@ async fn pod_create_repeat_container_name() {
     let s = spawn_control_plane().await;
     let client = reqwest::Client::new();
     let req = PodManifest {
-        metadata: UserMetadata { name: "nginx-pod".to_string() },
+        metadata: UserMetadata {
+            name: "nginx-pod".to_string(),
+        },
         spec: PodSpec {
-            containers: vec![ContainerSpec::new(), ContainerSpec::new()]
-        }
+            containers: vec![ContainerSpec::new(), ContainerSpec::new()],
+        },
     };
     let res = client
         .post(format!("{}/pods", s.address))
@@ -231,7 +294,11 @@ async fn pod_create_repeat_container_name() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST, "Duplicate container names should return 400 Bad Request");
+    assert_eq!(
+        res.status(),
+        StatusCode::BAD_REQUEST,
+        "Duplicate container names should return 400 Bad Request"
+    );
 }
 
 /// Try to assign a pod to a non-existing node, should get unprocessable entity
@@ -240,10 +307,12 @@ async fn pod_assign_node_invalid_node_name() {
     let s = spawn_api_server().await;
     let client = reqwest::Client::new();
     let req = PodManifest {
-        metadata: UserMetadata { name: "nginx-pod".to_string() },
+        metadata: UserMetadata {
+            name: "nginx-pod".to_string(),
+        },
         spec: PodSpec {
-            containers: vec![ContainerSpec::new()]
-        }
+            containers: vec![ContainerSpec::new()],
+        },
     };
     let res = client
         .post(format!("{}/pods", s.address))
@@ -252,8 +321,15 @@ async fn pod_assign_node_invalid_node_name() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "First pod creation should succeed");
-    assert!(res.json::<CreateResponse>().await.is_ok(), "First pod creation response should deserialize");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "First pod creation should succeed"
+    );
+    assert!(
+        res.json::<CreateResponse>().await.is_ok(),
+        "First pod creation response should deserialize"
+    );
 
     let req = PodPatch {
         value: "made up node".to_string(),
@@ -267,9 +343,12 @@ async fn pod_assign_node_invalid_node_name() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "Invalid node name should be 422 Unprocessable");
+    assert_eq!(
+        res.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "Invalid node name should be 422 Unprocessable"
+    );
 }
-
 
 /// Try to assign a non-existing pod, should get not found
 #[tokio::test]
@@ -290,7 +369,11 @@ async fn pod_assign_node_not_found() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::NOT_FOUND, "Patch to non-existing pod should be 404 Not Found");
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "Patch to non-existing pod should be 404 Not Found"
+    );
 }
 
 /// Successfully assign a pod, then try again and get conflict
@@ -300,10 +383,12 @@ async fn pod_assign_node_double_assign() {
     let n = spawn_node(&s).await;
     let client = reqwest::Client::new();
     let req = PodManifest {
-        metadata: UserMetadata { name: "nginx-pod".to_string() },
+        metadata: UserMetadata {
+            name: "nginx-pod".to_string(),
+        },
         spec: PodSpec {
-            containers: vec![ContainerSpec::new()]
-        }
+            containers: vec![ContainerSpec::new()],
+        },
     };
     let res = client
         .post(format!("{}/pods", s.address))
@@ -312,8 +397,15 @@ async fn pod_assign_node_double_assign() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CREATED, "First pod creation should succeed");
-    assert!(res.json::<CreateResponse>().await.is_ok(), "First pod creation response should deserialize");
+    assert_eq!(
+        res.status(),
+        StatusCode::CREATED,
+        "First pod creation should succeed"
+    );
+    assert!(
+        res.json::<CreateResponse>().await.is_ok(),
+        "First pod creation response should deserialize"
+    );
 
     let req = PodPatch {
         value: n.name,
@@ -327,7 +419,11 @@ async fn pod_assign_node_double_assign() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::NO_CONTENT, "Successfull patch should be 204 No Content");
+    assert_eq!(
+        res.status(),
+        StatusCode::NO_CONTENT,
+        "Successfull patch should be 204 No Content"
+    );
 
     let res = client
         .patch(format!("{}/pods/{}", s.address, "nginx-pod".to_string()))
@@ -336,5 +432,9 @@ async fn pod_assign_node_double_assign() {
         .await
         .unwrap();
 
-    assert_eq!(res.status(), StatusCode::CONFLICT, "Assigned to already scheduled pod should be 409 Conflict");
+    assert_eq!(
+        res.status(),
+        StatusCode::CONFLICT,
+        "Assigned to already scheduled pod should be 409 Conflict"
+    );
 }

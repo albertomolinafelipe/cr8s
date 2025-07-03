@@ -1,37 +1,31 @@
+use actix_web::web;
 use tokio::sync::mpsc;
 use tracing_subscriber::{self, EnvFilter};
-use actix_web::web;
 use uuid::Uuid;
 
 mod api;
 mod controller;
-mod worker;
 pub mod docker;
 pub mod state;
+mod sync;
+mod worker;
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let state = state::NodeState::new();
-    let app_state = web::Data::new(state);
+async fn main() -> Result<(), String> {
+    let state = web::Data::new(state::NodeState::new());
 
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::new("actix_server=warn,actix_web=warn,node=info")
-        )
+        .with_env_filter(EnvFilter::new("actix_server=warn,actix_web=warn,node=info"))
         .init();
 
     let (tx, rx) = mpsc::channel::<Uuid>(100);
 
-    let server = api::run(app_state.clone()).await?;
-    let server_handle = tokio::spawn(server);
-    tokio::spawn(worker::run(app_state.clone(), rx));
+    let controller_fut = controller::run(state.clone(), tx);
+    let worker_fut = worker::run(state.clone(), rx);
+    let sync_fut = sync::run(state.clone());
+    let server_fut = api::run(state.clone());
 
-    if let Err(_) = controller::run(app_state.clone(), tx).await {
-        std::process::exit(1);
-    }
+    tokio::try_join!(server_fut, worker_fut, sync_fut, controller_fut,)?;
 
-    if let Err(_) = server_handle.await {
-        std::process::exit(1);
-    }
     Ok(())
 }

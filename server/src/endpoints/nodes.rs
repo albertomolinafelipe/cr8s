@@ -1,25 +1,24 @@
-use actix_web::{web::{self, Bytes}, HttpResponse, HttpRequest, Responder};
-use serde::Deserialize;
 use crate::store::R8s;
+use actix_web::{
+    HttpRequest, HttpResponse, Responder,
+    web::{self, Bytes},
+};
+use serde::Deserialize;
 use shared::{
-    api::{EventType, NodeEvent, NodeRegisterReq}, 
-    models::{Node, NodeStatus}
+    api::{EventType, NodeEvent, NodeRegisterReq},
+    models::{Node, NodeStatus},
 };
 
-
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg
-        .route("", web::get().to(get))
+    cfg.route("", web::get().to(get))
         .route("", web::post().to(register))
         .route("/{node_name}", web::post().to(update_status));
 }
-
 
 async fn update_status(_state: web::Data<R8s>, node_name: web::Path<String>) -> impl Responder {
     tracing::info!("Got update call for node: {}", node_name);
     HttpResponse::NotImplemented().finish()
 }
-
 
 #[derive(Deserialize)]
 pub struct NodeQuery {
@@ -27,14 +26,11 @@ pub struct NodeQuery {
 }
 
 /// List, fetch and search pods
-async fn get(
-    state: web::Data<R8s>,
-    query: web::Query<NodeQuery>,
-) -> impl Responder {
+async fn get(state: web::Data<R8s>, query: web::Query<NodeQuery>) -> impl Responder {
     if query.watch.unwrap_or(false) {
         // Watch mode
         let mut rx = state.node_tx.subscribe();
-        let nodes = state.get_nodes().await; 
+        let nodes = state.get_nodes().await;
         let stream = async_stream::stream! {
             for n in nodes {
                 let event = NodeEvent {
@@ -56,11 +52,10 @@ async fn get(
     } else {
         // Normal list
         let nodes = state.get_nodes().await;
-        tracing::info!(num_nodes=nodes.len(), "Retrieved cluster nodes");
+        tracing::info!(num_nodes = nodes.len(), "Retrieved cluster nodes");
         HttpResponse::Ok().json(&nodes)
     }
 }
-
 
 /// Nodes register to the service
 async fn register(
@@ -68,7 +63,6 @@ async fn register(
     state: web::Data<R8s>,
     payload: web::Json<NodeRegisterReq>,
 ) -> impl Responder {
-
     let address = req
         .peer_addr()
         .map(|addr| addr.ip().to_string())
@@ -79,7 +73,7 @@ async fn register(
         addr: format!("{}:{}", address, payload.port),
         status: NodeStatus::Ready,
         started_at: chrono::Utc::now(),
-        last_heartbeat: chrono::Utc::now()
+        last_heartbeat: chrono::Utc::now(),
     };
 
     match state.add_node(&node).await {

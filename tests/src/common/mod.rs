@@ -1,14 +1,12 @@
+use futures_util::TryStreamExt;
+use reqwest::Client;
 use serde::de::DeserializeOwned;
 use testcontainers::{
-    core::IntoContainerPort, runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt
+    core::IntoContainerPort, runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt,
 };
-use uuid::Uuid;
-use reqwest::Client;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
-use futures_util::TryStreamExt;
-
-
+use uuid::Uuid;
 
 pub struct TestControlPlane {
     pub address: String,
@@ -18,14 +16,11 @@ pub struct TestControlPlane {
     _etcd: ContainerAsync<GenericImage>,
 }
 
-
 pub struct TestNode {
     pub address: String,
     pub name: String,
     _container: ContainerAsync<GenericImage>,
 }
-
-
 
 pub async fn spawn_control_plane() -> TestControlPlane {
     _spawn_control_plane(true, true).await
@@ -35,7 +30,6 @@ pub async fn spawn_api_server() -> TestControlPlane {
 }
 
 async fn _spawn_control_plane(scheduler: bool, drift: bool) -> TestControlPlane {
-    
     let server_name = random_name();
     let etcd_name = random_name();
     let network = random_name();
@@ -47,11 +41,15 @@ async fn _spawn_control_plane(scheduler: bool, drift: bool) -> TestControlPlane 
         .with_container_name(&etcd_name)
         .with_env_var("ETCD_LISTEN_CLIENT_URLS", "http://0.0.0.0:2379")
         .with_env_var("ETCD_ADVERTISE_CLIENT_URLS", &etcd_addr)
-        .start().await.expect("Failed to start etcd");
+        .start()
+        .await
+        .expect("Failed to start etcd");
 
     let mut container = GenericImage::new("r8s-server", "latest")
         .with_exposed_port(7620.tcp())
-        .with_wait_for(testcontainers::core::WaitFor::message_on_stdout("r8s-server ready"))
+        .with_wait_for(testcontainers::core::WaitFor::message_on_stdout(
+            "r8s-server ready",
+        ))
         .with_env_var("R8S_SERVER_PORT", "7620")
         .with_env_var("ETCD_ADDR", etcd_addr);
 
@@ -62,17 +60,18 @@ async fn _spawn_control_plane(scheduler: bool, drift: bool) -> TestControlPlane 
         container = container.with_env_var("RUN_DRIFT", drift.to_string());
     }
 
-    let container = container.with_network(&network)
+    let container = container
+        .with_network(&network)
         .with_container_name(&server_name)
         .start()
         .await
         .expect("Failed to start control plane");
 
-
-    let port = container.get_host_port_ipv4(7620)
+    let port = container
+        .get_host_port_ipv4(7620)
         .await
         .expect("Failed to get port");
-    
+
     let address = format!("http://127.0.0.1:{}", port);
 
     TestControlPlane {
@@ -84,13 +83,13 @@ async fn _spawn_control_plane(scheduler: bool, drift: bool) -> TestControlPlane 
     }
 }
 
-
 pub async fn spawn_node(s: &TestControlPlane) -> TestNode {
-
     let name = random_name();
     let container = GenericImage::new("r8s-node", "latest")
         .with_exposed_port(8081.tcp())
-        .with_wait_for(testcontainers::core::WaitFor::message_on_stdout("r8s-node ready"))
+        .with_wait_for(testcontainers::core::WaitFor::message_on_stdout(
+            "r8s-node ready",
+        ))
         .with_env_var("R8S_SERVER_HOST", s.name.clone())
         .with_env_var("R8S_SERVER_PORT", "7620")
         .with_env_var("NODE_PORT", "8081")
@@ -101,7 +100,8 @@ pub async fn spawn_node(s: &TestControlPlane) -> TestNode {
         .await
         .expect("Failed to start node");
 
-    let host_port = container.get_host_port_ipv4(8081)
+    let host_port = container
+        .get_host_port_ipv4(8081)
         .await
         .expect("Failed to get port");
 
@@ -110,7 +110,9 @@ pub async fn spawn_node(s: &TestControlPlane) -> TestNode {
 
     let name = client
         .get(format!("{}/name", address))
-        .send().await.ok()
+        .send()
+        .await
+        .ok()
         .and_then(|resp| resp.error_for_status().ok())
         .and_then(|resp| futures::executor::block_on(resp.text()).ok())
         .unwrap_or_else(|| "<unknown>".to_string());
@@ -121,7 +123,6 @@ pub async fn spawn_node(s: &TestControlPlane) -> TestNode {
         _container: container,
     }
 }
-
 
 pub async fn watch_stream<T, F>(url: &str, mut handle_event: F)
 where
@@ -137,14 +138,12 @@ where
             let stream_reader = StreamReader::new(byte_stream);
             let mut lines = BufReader::new(stream_reader).lines();
 
-
             while let Ok(Some(line)) = lines.next_line().await {
                 match serde_json::from_str::<T>(&line) {
                     Ok(event) => handle_event(event),
                     Err(_) => {}
                 }
             }
-
         }
         Ok(_) => {}
         Err(_) => {}

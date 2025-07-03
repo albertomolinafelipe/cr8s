@@ -1,7 +1,6 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PodObject {
@@ -53,7 +52,7 @@ pub struct Metadata {
     generation: u16,
     modified_at: DateTime<Utc>,
     #[serde(flatten)]
-    pub user: UserMetadata
+    pub user: UserMetadata,
 }
 
 /// Represents a node in the cluster.
@@ -83,25 +82,24 @@ pub enum PodStatus {
     Unknown,
 }
 
-
 impl Metadata {
     pub fn new(user: UserMetadata) -> Self {
-        Self { 
+        Self {
             created_at: Utc::now(),
             generation: 0,
             modified_at: Utc::now(),
-            user
+            user,
         }
     }
 }
 
 impl ContainerSpec {
     pub fn new() -> Self {
-        Self { 
-            name: "name".to_string(), 
-            image: "image".to_string(), 
-            ports: Vec::new(), 
-            env:  Vec::new(),
+        Self {
+            name: "name".to_string(),
+            image: "image".to_string(),
+            ports: Vec::new(),
+            env: Vec::new(),
         }
     }
 }
@@ -124,8 +122,12 @@ impl PodObject {
             id: Uuid::new_v4(),
             node_name: "node_name".to_string(),
             pod_status: PodStatus::Pending,
-            metadata: Metadata::new(UserMetadata { name: "pod_name".to_string() }),
-            spec: PodSpec { containers: Vec::new() },
+            metadata: Metadata::new(UserMetadata {
+                name: "pod_name".to_string(),
+            }),
+            spec: PodSpec {
+                containers: Vec::new(),
+            },
         }
     }
 }

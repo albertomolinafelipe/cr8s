@@ -21,11 +21,10 @@ impl std::fmt::Display for PodStatus {
             PodStatus::Running => write!(f, "Running"),
             PodStatus::Failed => write!(f, "Failed"),
             PodStatus::Succeeded => write!(f, "Succeeded"),
-            PodStatus::Unknown => write!(f, "Unknown")
+            PodStatus::Unknown => write!(f, "Unknown"),
         }
     }
 }
-
 
 impl Tabled for Node {
     const LENGTH: usize = 5;
@@ -35,7 +34,12 @@ impl Tabled for Node {
             Cow::Owned(self.name.clone()),
             Cow::Owned(self.status.to_string()),
             Cow::Owned(self.addr.clone()),
-            Cow::Owned(human_duration(Utc::now().signed_duration_since(self.started_at).to_std().unwrap_or_default())),
+            Cow::Owned(human_duration(
+                Utc::now()
+                    .signed_duration_since(self.started_at)
+                    .to_std()
+                    .unwrap_or_default(),
+            )),
         ]
     }
 
@@ -54,10 +58,10 @@ impl Tabled for PodObject {
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
         vec![
-            Cow::Owned(self.metadata.user.name.clone()),                    
-            Cow::Borrowed("1/1"),                                      
-            Cow::Owned(self.pod_status.to_string()),                  
-            Cow::Borrowed("0"),                                        
+            Cow::Owned(self.metadata.user.name.clone()),
+            Cow::Borrowed("1/1"),
+            Cow::Owned(self.pod_status.to_string()),
+            Cow::Borrowed("0"),
             Cow::Owned(human_duration(
                 Utc::now()
                     .signed_duration_since(self.metadata.created_at)

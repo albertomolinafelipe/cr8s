@@ -1,9 +1,9 @@
 use clap::Parser;
-use tabled::{Table, settings::Style};
 use shared::models::{Node, PodObject};
+use tabled::{Table, settings::Style};
 
-use crate::config::Config;
 use super::ResourceType;
+use crate::config::Config;
 
 #[derive(Parser, Debug)]
 pub struct GetArgs {
@@ -18,32 +18,25 @@ pub async fn handle(config: &Config, args: &GetArgs) {
     let response = reqwest::get(&url).await;
 
     match response {
-        Ok(resp) if resp.status().is_success() => {
-            match args.resource {
-                ResourceType::Nodes => {
-                    match resp.json::<Vec<Node>>().await {
-                        Ok(data) => {
-                            let mut table = Table::new(data);
-                            table.with(Style::blank());
-                            println!("{}", table);
-                        }
-                        Err(e) => eprintln!("Failed to parse nodes: {}", e),
-                    }
+        Ok(resp) if resp.status().is_success() => match args.resource {
+            ResourceType::Nodes => match resp.json::<Vec<Node>>().await {
+                Ok(data) => {
+                    let mut table = Table::new(data);
+                    table.with(Style::blank());
+                    println!("{}", table);
                 }
-                ResourceType::Pods => {
-                    match resp.json::<Vec<PodObject>>().await {
-                        Ok(data) => {
-                            let mut table = Table::new(data);
-                            table.with(Style::blank());
-                            println!("{}", table);
-                        }
-                        Err(e) => eprintln!("Failed to parse pods: {}", e),
-                    }
+                Err(e) => eprintln!("Failed to parse nodes: {}", e),
+            },
+            ResourceType::Pods => match resp.json::<Vec<PodObject>>().await {
+                Ok(data) => {
+                    let mut table = Table::new(data);
+                    table.with(Style::blank());
+                    println!("{}", table);
                 }
-            }
-        }
+                Err(e) => eprintln!("Failed to parse pods: {}", e),
+            },
+        },
         Ok(resp) => eprintln!("Failed: {:#?}", resp.error_for_status()),
         Err(e) => eprintln!("Request failed: {}", e),
     }
 }
-

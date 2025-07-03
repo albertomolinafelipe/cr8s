@@ -1,11 +1,11 @@
-use actix_web::{App, HttpServer, web, HttpResponse, Responder};
+use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use std::env;
 use tracing_subscriber::{self, EnvFilter};
 
-mod store;
+mod drift_controller;
 mod endpoints;
 mod scheduler;
-mod drift_controller;
+mod store;
 
 use store::R8s;
 
@@ -13,11 +13,10 @@ const R8S_SERVER_PORT: u16 = 7620;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::new("actix_server=warn,actix_web=warn,server=info")
-        )
+        .with_env_filter(EnvFilter::new(
+            "actix_server=warn,actix_web=warn,server=info",
+        ))
         .init();
     let port = env::var("R8S_SERVER_PORT")
         .ok()
@@ -26,11 +25,17 @@ async fn main() -> std::io::Result<()> {
     let state = web::Data::new(R8s::new().await);
 
     // Start controller and scheduler
-    if std::env::var("RUN_SCHEDULER").map(|v| v != "false").unwrap_or(true) {
+    if std::env::var("RUN_SCHEDULER")
+        .map(|v| v != "false")
+        .unwrap_or(true)
+    {
         tokio::spawn(scheduler::run());
     }
 
-    if std::env::var("RUN_DRIFT").map(|v| v != "false").unwrap_or(true) {
+    if std::env::var("RUN_DRIFT")
+        .map(|v| v != "false")
+        .unwrap_or(true)
+    {
         tokio::spawn(drift_controller::run());
     }
 

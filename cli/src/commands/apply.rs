@@ -1,13 +1,12 @@
 use clap::Parser;
-use serde::{Deserialize, Serialize};
-use shared::models::{PodSpec, UserMetadata};
-use tokio::fs;
 use erased_serde::serialize_trait_object;
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use shared::api::PodManifest;
+use shared::models::{PodSpec, UserMetadata};
+use tokio::fs;
 
 use crate::config::Config;
-
 
 #[derive(Parser, Debug)]
 pub struct ApplyArgs {
@@ -60,7 +59,6 @@ pub async fn handle(config: &Config, args: &ApplyArgs) {
     }
 }
 
-
 /// Marker trait for serializable manifests
 pub trait Manifest: erased_serde::Serialize + Send + Sync {}
 impl<T: Serialize + Send + Sync> Manifest for T {}
@@ -85,7 +83,10 @@ pub enum Spec {
 impl Spec {
     pub fn into_manifest(self, metadata: UserMetadata) -> Box<dyn Manifest> {
         match self {
-            Spec::Pod(pod_spec) => Box::new(PodManifest { metadata, spec: pod_spec }),
+            Spec::Pod(pod_spec) => Box::new(PodManifest {
+                metadata,
+                spec: pod_spec,
+            }),
             Spec::Deployment => unimplemented!("Deployment support not implemented yet"),
         }
     }

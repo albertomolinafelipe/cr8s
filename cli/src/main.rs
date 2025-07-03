@@ -23,8 +23,6 @@ enum Commands {
     Describe,
 }
 
-
-
 fn main() {
     let cli = R8sCtl::parse();
     let config = config::load_config();

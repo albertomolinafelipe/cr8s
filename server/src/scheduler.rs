@@ -1,16 +1,18 @@
-use std::sync::Arc;
-use serde::de::DeserializeOwned;
 use dashmap::{DashMap, DashSet};
+use futures_util::TryStreamExt;
+use rand::seq::IteratorRandom;
 use reqwest::Client;
+use serde::de::DeserializeOwned;
 use shared::api::{NodeEvent, PodField, PodPatch};
+use shared::{
+    api::PodEvent,
+    models::{Node, PodObject},
+};
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc::{self, Sender};
 use tokio_util::io::StreamReader;
-use futures_util::TryStreamExt;
 use uuid::Uuid;
-use rand::seq::IteratorRandom;
-use shared::{api::PodEvent, models::{Node, PodObject}};
-
 
 type State = Arc<SchedulerState>;
 
@@ -38,17 +40,17 @@ struct SchedulerState {
     pods: DashMap<Uuid, PodObject>,
     pod_map: DashMap<String, DashSet<Uuid>>,
     pod_tx: Sender<Uuid>,
-    api_server: Option<String>
+    api_server: Option<String>,
 }
 
 impl SchedulerState {
     fn new(pod_tx: Sender<Uuid>, api_server: Option<String>) -> Self {
-        Self { 
+        Self {
             nodes: DashMap::new(),
             pods: DashMap::new(),
             pod_map: DashMap::new(),
             pod_tx,
-            api_server
+            api_server,
         }
     }
 }
@@ -57,30 +59,34 @@ async fn watch_pods(state: State) -> Result<(), ()> {
     let url = "http://localhost:7620/pods?nodeName=&watch=true".to_string();
     watch_stream::<PodEvent, _>(&url, move |event| {
         handle_pod_event(state.clone(), event);
-    }).await;
+    })
+    .await;
     Ok(())
 }
 
 fn handle_pod_event(state: State, event: PodEvent) {
     state.pods.insert(event.pod.id, event.pod.clone());
-    state.pod_map
+    state
+        .pod_map
         .entry("".to_string())
         .or_insert_with(DashSet::new)
         .insert(event.pod.id);
     let _ = state.pod_tx.try_send(event.pod.id);
-
 }
 
 async fn watch_nodes(state: State) -> Result<(), ()> {
     let url = "http://localhost:7620/nodes?watch=true".to_string();
     watch_stream::<NodeEvent, _>(&url, move |event| {
         handle_node_event(state.clone(), event);
-    }).await;
+    })
+    .await;
     Ok(())
 }
 
 fn handle_node_event(state: State, event: NodeEvent) {
-    state.nodes.insert(event.node.name.clone(), event.node.clone());
+    state
+        .nodes
+        .insert(event.node.name.clone(), event.node.clone());
     if let Some(pods) = state.pod_map.get("") {
         for pod_id in pods.iter() {
             let state = state.clone();
@@ -90,9 +96,7 @@ fn handle_node_event(state: State, event: NodeEvent) {
             });
         }
     }
-
 }
-
 
 async fn watch_stream<T, F>(url: &str, mut handle_event: F)
 where
@@ -128,7 +132,6 @@ where
     }
 }
 
-
 async fn schedule(state: State, id: Uuid) {
     let pod = match state.pods.get(&id) {
         Some(p) => p,
@@ -159,22 +162,21 @@ async fn schedule(state: State, id: Uuid) {
     };
 
     let client = Client::new();
-    let base_url = state.api_server.as_deref().unwrap_or("http://localhost:7620");
+    let base_url = state
+        .api_server
+        .as_deref()
+        .unwrap_or("http://localhost:7620");
     let url = format!("{}/pods/{}", base_url, pod.metadata.user.name);
 
-
-    match client
-        .patch(&url)
-        .json(&patch)
-        .send()
-        .await
-    {
+    match client.patch(&url).json(&patch).send().await {
         Ok(resp) if resp.status().is_success() => {
-            state.pod_map
+            state
+                .pod_map
                 .entry("".to_string())
                 .or_insert_with(DashSet::new)
                 .remove(&id);
-            state.pod_map
+            state
+                .pod_map
                 .entry(node)
                 .or_insert_with(DashSet::new)
                 .insert(id);
@@ -192,16 +194,14 @@ async fn schedule(state: State, id: Uuid) {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use shared::api::EventType;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-#[tokio::test]
+    #[tokio::test]
     async fn test_handle_pod_event_schedule_pod() {
         let (tx, mut rx) = mpsc::channel(10);
 
@@ -217,10 +217,16 @@ mod tests {
         let pod = PodObject::new();
 
         let node = Node::new();
-        let node_event = NodeEvent { node: node.clone(), event_type: EventType::Added };
+        let node_event = NodeEvent {
+            node: node.clone(),
+            event_type: EventType::Added,
+        };
         handle_node_event(state.clone(), node_event);
 
-        let event = PodEvent { pod: pod.clone(), event_type: EventType::Added};
+        let event = PodEvent {
+            pod: pod.clone(),
+            event_type: EventType::Added,
+        };
         handle_pod_event(state.clone(), event);
 
         // Check pod stored in state
@@ -235,9 +241,8 @@ mod tests {
         assert!(node_pods.unwrap().contains(&pod.id));
     }
 
-#[tokio::test]
+    #[tokio::test]
     async fn test_handle_node_event_schedule_unscheduled_pods() {
-
         let (tx, _rx) = mpsc::channel(10);
 
         let mock_server = MockServer::start().await;
@@ -250,7 +255,10 @@ mod tests {
         let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
         let pod = PodObject::new();
-        let event = PodEvent { pod: pod.clone(), event_type: EventType::Added};
+        let event = PodEvent {
+            pod: pod.clone(),
+            event_type: EventType::Added,
+        };
         handle_pod_event(state.clone(), event);
 
         // Check pod is unscheduled
@@ -260,7 +268,10 @@ mod tests {
 
         // Send event
         let node = Node::new();
-        let node_event = NodeEvent { node: node.clone(), event_type: EventType::Added };
+        let node_event = NodeEvent {
+            node: node.clone(),
+            event_type: EventType::Added,
+        };
         handle_node_event(state.clone(), node_event);
 
         // Wait a little bit
