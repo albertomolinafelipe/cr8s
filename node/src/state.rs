@@ -1,13 +1,12 @@
-use std::collections::{HashMap, HashSet};
 use std::env;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use actix_web::web;
 use bollard::secret::ContainerStateStatusEnum;
-use bollard::Docker;
+use dashmap::{DashMap, DashSet};
 use shared::models::PodObject;
 use uuid::Uuid;
 
-use crate::docker::docker_client;
+use crate::docker::DockerManager;
 
 
 pub type State = web::Data<NodeState>;
@@ -27,38 +26,25 @@ pub struct ContainerRuntime {
 #[derive(Debug)]
 pub struct NodeState {
     pub config: Config,
-    client: Arc<Docker>,
+    pub docker_mgr: DockerManager,
     node_name: RwLock<String>,
-    pods: RwLock<HashMap<Uuid, PodObject>>,
-    pod_runtimes: RwLock<HashMap<Uuid, PodRuntime>>,
-    pod_names: RwLock<HashSet<String>>,
-    images: RwLock<HashSet<String>>
+    pods: DashMap<Uuid, PodObject>,
+    pod_runtimes: DashMap<Uuid, PodRuntime>,
+    pod_names: DashSet<String>,
 }
 
 impl NodeState {
     pub fn new() -> Self {
         Self {
             config: load_config(),
-            client: docker_client(),
+            docker_mgr: DockerManager::new(),
             node_name: RwLock::new(String::new()),
-            pods: RwLock::new(HashMap::new()),
-            pod_runtimes: RwLock::new(HashMap::new()),
-            pod_names: RwLock::new(HashSet::new()),
-            images: RwLock::new(HashSet::new()),
+            pods: DashMap::new(),
+            pod_runtimes: DashMap::new(),
+            pod_names: DashSet::new(),
         }
     }
 
-    pub fn has_image(&self, image: &str) -> bool {
-        self.images.read().unwrap().contains(image)
-    }
-
-    pub fn mark_image_as_pulled(&self, image: String) {
-        self.images.write().unwrap().insert(image);
-    }
-
-    pub fn docker_client(&self) -> Arc<Docker> {
-        self.client.clone()
-    }
 
     pub fn node_name(&self) -> String {
         self.node_name.read().unwrap().clone()
@@ -69,46 +55,41 @@ impl NodeState {
     }
 
     pub fn get_pod(&self, id: &Uuid) -> Option<PodObject>{
-        self.pods.read().unwrap().get(id).cloned()
+        self.pods.get(id).map(|r| r.clone())
     }
 
     pub fn get_pod_runtime(&self, id: &Uuid) -> Option<PodRuntime>{
-        self.pod_runtimes.read().unwrap().get(id).cloned()
+        self.pod_runtimes.get(id).map(|r| r.clone())
     }
 
     pub fn get_pod_names(&self) -> Vec<String> {
         self.pods
-            .read()
-            .unwrap()
-            .values()
+            .iter()
             .map(|p| p.metadata.user.name.clone())
             .collect()
     }
 
     pub fn add_pod(&self, pod: &PodObject) -> Result<(), String> {
-        let mut pods = self.pods.write().unwrap();
-        let mut pod_names = self.pod_names.write().unwrap();
 
-        if pods.contains_key(&pod.id) {
+        if self.pods.contains_key(&pod.id) {
             return Err(format!("Pod with ID '{}' already exists.", pod.id));
         }
 
-        if pod_names.contains(&pod.metadata.user.name) {
+        if self.pod_names.contains(&pod.metadata.user.name) {
             return Err(format!("Pod with name '{}' already exists.", pod.metadata.user.name));
         }
 
-        pods.insert(pod.id, pod.clone());
-        pod_names.insert(pod.metadata.user.name.clone());
+        self.pods.insert(pod.id, pod.clone());
+        self.pod_names.insert(pod.metadata.user.name.clone());
 
         Ok(())
     }
 
     pub fn add_pod_runtime(&self, pod_runtime: PodRuntime) -> Result<(), String> {
-        let mut runtimes = self.pod_runtimes.write().unwrap();
-        if runtimes.contains_key(&pod_runtime.id) {
+        if self.pod_runtimes.contains_key(&pod_runtime.id) {
             return Err(format!("PodRuntime with ID '{}' already exists.", pod_runtime.id));
         }
-        runtimes.insert(pod_runtime.id, pod_runtime);
+        self.pod_runtimes.insert(pod_runtime.id, pod_runtime);
         Ok(())
     }
 }

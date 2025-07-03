@@ -1,7 +1,7 @@
 use reqwest::Client;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
-use crate::{docker::start_pod, state::State};
+use crate::state::State;
 
 pub async fn run(state: State, mut rx: Receiver<Uuid>) {
     tokio::spawn(async move {
@@ -26,8 +26,7 @@ async fn reconciliate(state: State, id: Uuid) {
         return;
     }
 
-    let docker = state.docker_client();
-    let runtime = start_pod(docker, &state, pod).await;
+    let runtime = state.docker_mgr.start_pod(pod).await;
     state.add_pod_runtime(runtime).ok();
 
     // Take action to fix it

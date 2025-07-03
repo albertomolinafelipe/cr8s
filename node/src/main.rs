@@ -13,6 +13,7 @@ pub mod state;
 async fn main() -> std::io::Result<()> {
     let state = state::NodeState::new();
     let app_state = web::Data::new(state);
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::new("actix_server=warn,actix_web=warn,node=info")
