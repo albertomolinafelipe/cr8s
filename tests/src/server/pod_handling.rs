@@ -326,8 +326,13 @@ async fn pod_assign_node_double_assign() {
         .send()
         .await
         .unwrap();
+    let status = res.status();
+    let body = res.text().await.unwrap();
 
-    assert_eq!(res.status(), StatusCode::NO_CONTENT, "Successfull patch should be 204 No Content");
+    println!("RESP STATUS: {}", status);
+    println!("RESP BODY: {}", body);
+    //assert_eq!(res.status(), StatusCode::NO_CONTENT, "Successfull patch should be 204 No Content");
+    assert!(false);
 
     let res = client
         .patch(format!("{}/pods/{}", s.address, "nginx-pod".to_string()))

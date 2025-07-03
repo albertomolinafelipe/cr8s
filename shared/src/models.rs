@@ -105,3 +105,27 @@ impl ContainerSpec {
         }
     }
 }
+
+impl Node {
+    pub fn new() -> Self {
+        Self {
+            name: "node_name".to_string(),
+            status: NodeStatus::Ready,
+            addr: "0.0.0.0".to_string(),
+            started_at: Utc::now(),
+            last_heartbeat: Utc::now(),
+        }
+    }
+}
+
+impl PodObject {
+    pub fn new() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            node_name: "node_name".to_string(),
+            pod_status: PodStatus::Pending,
+            metadata: Metadata::new(UserMetadata { name: "pod_name".to_string() }),
+            spec: PodSpec { containers: Vec::new() },
+        }
+    }
+}

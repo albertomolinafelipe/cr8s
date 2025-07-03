@@ -104,6 +104,7 @@ impl R8s {
             .entry("".to_string())
             .or_insert_with(DashSet::new)
             .insert(pod.id);
+        println!("Inserted in unassigned set");
         let event = PodEvent {
             event_type: EventType::Added,
             pod: pod.clone(),
