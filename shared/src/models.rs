@@ -22,8 +22,8 @@ pub struct PodSpec {
 pub struct ContainerSpec {
     pub name: String,
     pub image: String,
-    pub ports: Vec<Port>,
-    pub env: Vec<EnvVar>,
+    pub ports: Option<Vec<Port>>,
+    pub env: Option<Vec<EnvVar>>,
 }
 
 /// Environment variable for a container.
@@ -98,8 +98,8 @@ impl ContainerSpec {
         Self {
             name: "name".to_string(),
             image: "image".to_string(),
-            ports: Vec::new(),
-            env: Vec::new(),
+            ports: None,
+            env: None,
         }
     }
 }

@@ -18,19 +18,12 @@ metadata:
   name: lite-db-pod
 spec:
   containers:
-    - name: lite-db
-      image: nouchka/sqlite3:latest
+    - name: caddy
+      image: caddy:alpine
       ports:
-        - containerPort: 9000
-      env:
-        - name: DB_FILE
-          value: /data/db.sqlite
-    - name: nginx-backup
-      image: nginx:latest
+      - containerPort: 80
+
+    - name: tinyproxy
+      image: vimagick/tinyproxy
       ports:
-        - containerPort: 80
-      env:
-        - name: ENV
-          value: production
-        - name: DEBUG
-          value: "false"
+      - containerPort: 8888

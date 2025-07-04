@@ -4,7 +4,7 @@ use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
 pub async fn run(state: State, mut rx: Receiver<Uuid>) -> Result<(), String> {
-    tracing::info!(" - Starting reconciliation worker");
+    tracing::info!("Starting reconciliation worker");
     tokio::spawn(async move {
         while let Some(pod_id) = rx.recv().await {
             let app_state = state.clone();
@@ -28,8 +28,10 @@ async fn reconciliate(state: State, id: Uuid) {
     }
 
     let runtime = state.docker_mgr.start_pod(pod).await;
-    runtime.containers.iter().for_each(|c| {
-        if c.status != ContainerStateStatusEnum::RUNNING {
+    runtime.containers.iter().for_each(|c| match c.status {
+        ContainerStateStatusEnum::RUNNING => {}
+        ContainerStateStatusEnum::EXITED => {}
+        _ => {
             tracing::warn!(name=%c.name, "Container didn't start");
         }
     });

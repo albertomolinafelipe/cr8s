@@ -2,7 +2,7 @@ use crate::state::State;
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 
 pub async fn run(state: State) -> Result<(), String> {
-    tracing::info!(" - Starting api server");
+    tracing::info!("Starting api server");
     let port = state.config.port;
     let node_api_workers = state.config.node_api_workers;
     let _ = HttpServer::new(move || {

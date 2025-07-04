@@ -14,7 +14,7 @@ use uuid::Uuid;
 pub async fn run(state: State, tx: Sender<Uuid>) -> Result<(), String> {
     register(state.clone()).await?;
     println!("r8s-node ready");
-    tracing::info!(" - Starting assignment controller");
+    tracing::info!("Starting assignment controller");
     watch(state.clone(), &tx).await?;
 
     Ok(())
@@ -101,11 +101,6 @@ async fn register(state: State) -> Result<(), String> {
 }
 
 async fn handle_event(state: State, event: PodEvent, tx: &Sender<Uuid>) {
-    tracing::info!(
-        "Pod event {:?} - {}",
-        event.event_type,
-        event.pod.metadata.user.name
-    );
     match event.event_type {
         EventType::Modified => {
             if let Err(e) = state.add_pod(&event.pod) {

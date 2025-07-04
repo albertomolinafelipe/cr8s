@@ -46,20 +46,17 @@ impl DockerManager {
 
             let config = Config {
                 image: Some(container_spec.image.clone()),
-                env: Some(
-                    container_spec
-                        .env
-                        .iter()
+                env: container_spec.env.as_ref().map(|envs| {
+                    envs.iter()
                         .map(|env| format!("{}={}", env.name, env.value))
-                        .collect(),
-                ),
-                exposed_ports: Some(
-                    container_spec
-                        .ports
+                        .collect()
+                }),
+                exposed_ports: container_spec.ports.as_ref().map(|ports| {
+                    ports
                         .iter()
                         .map(|p| (format!("{}/tcp", p.container_port), HashMap::new()))
-                        .collect(),
-                ),
+                        .collect()
+                }),
                 ..Default::default()
             };
 
