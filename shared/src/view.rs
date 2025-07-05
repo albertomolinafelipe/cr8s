@@ -57,9 +57,32 @@ impl Tabled for PodObject {
     const LENGTH: usize = 5;
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
+        // Allowed statuses (good statuses)
+        let good_statuses = [
+            // "empty",
+            "created",
+            "running",
+            //"paused",
+            //"restarting",
+            //"removing",
+            //"exited",
+            //"dead",
+        ];
+
+        let total_containers = self.spec.containers.len();
+
+        let ready_count = if self.last_status_update.is_none() {
+            0
+        } else {
+            self.container_status
+                .iter()
+                .filter(|(_, status)| good_statuses.contains(&status.as_str()))
+                .count()
+        };
+
         vec![
             Cow::Owned(self.metadata.user.name.clone()),
-            Cow::Borrowed("1/1"),
+            Cow::Owned(format!("{}/{}", ready_count, total_containers)),
             Cow::Owned(self.pod_status.to_string()),
             Cow::Borrowed("0"),
             Cow::Owned(human_duration(

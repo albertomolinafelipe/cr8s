@@ -143,6 +143,7 @@ impl DockerManager {
                 container_spec.name.clone(),
                 ContainerRuntime {
                     id: container_id,
+                    spec_name: container_spec.name.clone(),
                     name: container_name,
                     status,
                 },

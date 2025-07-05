@@ -8,6 +8,8 @@ pub struct PodObject {
     pub node_name: String,
     pub pod_status: PodStatus,
     pub metadata: Metadata,
+    pub last_status_update: Option<DateTime<Utc>>,
+    pub container_status: Vec<(String, String)>,
     pub spec: PodSpec,
 }
 
@@ -121,10 +123,30 @@ impl PodObject {
         Self {
             id: Uuid::new_v4(),
             node_name: "node_name".to_string(),
-            pod_status: PodStatus::Pending,
             metadata: Metadata::new(UserMetadata {
                 name: "pod_name".to_string(),
             }),
+            pod_status: PodStatus::Pending,
+            last_status_update: None,
+            container_status: Vec::new(),
+            spec: PodSpec {
+                containers: Vec::new(),
+            },
+        }
+    }
+}
+
+impl Default for PodObject {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            node_name: "".to_string(),
+            metadata: Metadata::new(UserMetadata {
+                name: "".to_string(),
+            }),
+            pod_status: PodStatus::Pending,
+            last_status_update: None,
+            container_status: Vec::new(),
             spec: PodSpec {
                 containers: Vec::new(),
             },

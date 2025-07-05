@@ -1,6 +1,4 @@
-use std::ops::Deref;
-
-use crate::store::R8s;
+use crate::State;
 use actix_web::{
     HttpResponse, Responder,
     web::{self, Bytes},
@@ -18,7 +16,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 /// List, fetch and search pods
-async fn get(state: web::Data<R8s>, query: web::Query<PodQueryParams>) -> impl Responder {
+async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder {
     tracing::debug!(
         watch=%query.watch.unwrap_or(false),
         node_name=%query.node_name.clone().unwrap_or("None".to_string()),
@@ -69,29 +67,24 @@ async fn get(state: web::Data<R8s>, query: web::Query<PodQueryParams>) -> impl R
 
 /// Update pod status
 async fn status(
-    state: web::Data<R8s>,
+    state: State,
     path_string: web::Path<String>,
     body: web::Json<PodStatusUpdate>,
 ) -> impl Responder {
-    let status_update = body.into_inner();
+    let mut status_update = body.into_inner();
     let pod_name = path_string.into_inner();
 
-    // Check pod name and id exists
-    match state.pod_name_idx.get(&pod_name) {
-        Some(id) => {
-            if id.deref() != &status_update.id {
-                return HttpResponse::BadRequest().body("Pod id and pod name don't match");
-            }
-        }
-        None => return HttpResponse::NotFound().finish(),
-    }
+    // Check pod name exists
+    let Some(pod_id) = state.pod_name_idx.get(&pod_name) else {
+        return HttpResponse::NotFound().finish();
+    };
 
     // Check node name and that pod is assigned to node
     if !state.node_names.contains(&status_update.node_name) {
         return HttpResponse::Forbidden().finish();
     }
     match state.pod_map.get(&status_update.node_name) {
-        Some(set) if set.contains(&status_update.id) => {}
+        Some(set) if set.contains(&pod_id) => {}
         _ => return HttpResponse::Unauthorized().finish(),
     }
 
@@ -100,16 +93,37 @@ async fn status(
         tracing::warn!(error=%error, "Failed to update node heartbeat");
         // return error.to_http_response();
     }
-    tracing::trace!("Updated node heartbeat");
 
     // Check body container names match spec
-    // Update status
-    HttpResponse::NotImplemented().finish()
+    match state
+        .update_pod_status(
+            pod_id.clone(),
+            status_update.status.clone(),
+            &mut status_update.container_statuses,
+        )
+        .await
+    {
+        Ok(_) => {
+            tracing::trace!(
+                pod=%pod_name,
+                status=%status_update.status,
+                "Pod status successfully updated"
+            );
+            HttpResponse::Ok().finish()
+        }
+        Err(err) => {
+            tracing::warn!(
+                error=%err,
+                "Could not update pod status"
+            );
+            err.to_http_response()
+        }
+    }
 }
 
 /// Update pod
 async fn update(
-    state: web::Data<R8s>,
+    state: State,
     path_string: web::Path<String>,
     body: web::Json<PodPatch>,
 ) -> impl Responder {
@@ -117,14 +131,7 @@ async fn update(
     let pod_name = path_string.into_inner();
     match patch.pod_field {
         PodField::NodeName => match state.assign_pod(&pod_name, patch.value.clone()).await {
-            Ok(_) => {
-                tracing::info!(
-                    pod=%pod_name,
-                    node=%patch.value,
-                    "Pod successfully assigned to node"
-                );
-                HttpResponse::NoContent().finish()
-            }
+            Ok(_) => HttpResponse::NoContent().finish(),
             Err(err) => {
                 tracing::warn!(
                     error=%err,
@@ -138,7 +145,7 @@ async fn update(
 }
 
 /// Add spec object to the system
-async fn create(state: web::Data<R8s>, body: web::Json<PodManifest>) -> impl Responder {
+async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
     let spec_obj = body.into_inner();
     let pod_name = spec_obj.metadata.name.clone();
     tracing::debug!(name=%pod_name, "Received pod manifest");

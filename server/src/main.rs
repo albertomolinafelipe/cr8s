@@ -7,9 +7,10 @@ mod endpoints;
 mod scheduler;
 mod store;
 
-use store::R8s;
+use store::state::R8s;
 
 const R8S_SERVER_PORT: u16 = 7620;
+type State = web::Data<R8s>;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -21,20 +22,17 @@ async fn main() -> std::io::Result<()> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(R8S_SERVER_PORT);
-    let state = web::Data::new(R8s::new().await);
+    let state: State = web::Data::new(R8s::new().await);
 
     // Start controller and scheduler
-    if std::env::var("RUN_SCHEDULER")
+    if env::var("RUN_SCHEDULER")
         .map(|v| v != "false")
         .unwrap_or(true)
     {
         tokio::spawn(scheduler::run());
     }
 
-    if std::env::var("RUN_DRIFT")
-        .map(|v| v != "false")
-        .unwrap_or(true)
-    {
+    if env::var("RUN_DRIFT").map(|v| v != "false").unwrap_or(true) {
         tokio::spawn(drift_controller::run());
     }
 

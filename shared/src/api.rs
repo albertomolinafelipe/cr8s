@@ -44,11 +44,8 @@ pub struct NodeEvent {
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum EventType {
-    #[serde(rename = "ADDED")]
     Added,
-    #[serde(rename = "DELETED")]
     Deleted,
-    #[serde(rename = "MODIFIED")]
     Modified,
 }
 
@@ -72,8 +69,7 @@ pub enum PodField {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct PodStatusUpdate {
-    pub id: Uuid,
     pub node_name: String,
     pub status: PodStatus,
-    pub containers_status: Vec<(String, String)>,
+    pub container_statuses: Vec<(String, String)>,
 }

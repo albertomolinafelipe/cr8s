@@ -22,6 +22,7 @@ pub struct PodRuntime {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerRuntime {
     pub id: String,
+    pub spec_name: String,
     pub name: String,
     pub status: ContainerStateStatusEnum,
 }

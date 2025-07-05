@@ -14,15 +14,14 @@ pub async fn run(state: State) -> Result<(), String> {
         interval.tick().await;
         let client = Client::new();
         for p in state.pod_runtimes.iter() {
-            let mut containers_status: Vec<(String, String)> = Vec::new();
+            let mut container_statuses: Vec<(String, String)> = Vec::new();
             // Over simplification obv
-            let mut pod_status = PodStatus::Succeeded;
+            let mut pod_status = PodStatus::Running;
             for c in p.containers.values() {
                 let status = state.docker_mgr.get_container_status(&c.id).await;
                 match status {
                     Ok(s) => {
-                        tracing::debug!(container=%c.name, status=%s, "Container inspect");
-                        containers_status.push((c.name.clone(), s.to_string()));
+                        container_statuses.push((c.spec_name.clone(), s.to_string()));
                         if s != ContainerStateStatusEnum::RUNNING {
                             pod_status = PodStatus::Succeeded;
                         }
@@ -31,9 +30,8 @@ pub async fn run(state: State) -> Result<(), String> {
                 }
             }
             let update = PodStatusUpdate {
-                id: p.id,
                 status: pod_status,
-                containers_status,
+                container_statuses,
                 node_name: state.node_name(),
             };
             let response = client

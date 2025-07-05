@@ -150,12 +150,6 @@ async fn schedule(state: State, id: Uuid) {
         }
     };
 
-    tracing::info!(
-        pod_name=%pod.metadata.user.name,
-        node_name=%node,
-        "Scheduling pod"
-    );
-
     let patch = PodPatch {
         pod_field: PodField::NodeName,
         value: node.clone(),
@@ -170,6 +164,11 @@ async fn schedule(state: State, id: Uuid) {
 
     match client.patch(&url).json(&patch).send().await {
         Ok(resp) if resp.status().is_success() => {
+            tracing::info!(
+                pod_name=%pod.metadata.user.name,
+                node_name=%node,
+                "Scheduled pod"
+            );
             state
                 .pod_map
                 .entry("".to_string())

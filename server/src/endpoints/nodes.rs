@@ -1,4 +1,4 @@
-use crate::store::R8s;
+use crate::State;
 use actix_web::{
     HttpRequest, HttpResponse, Responder,
     web::{self, Bytes},
@@ -11,13 +11,7 @@ use shared::{
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(get))
-        .route("", web::post().to(register))
-        .route("/{node_name}", web::post().to(update_status));
-}
-
-async fn update_status(_state: web::Data<R8s>, node_name: web::Path<String>) -> impl Responder {
-    tracing::debug!("Got update call for node: {}", node_name);
-    HttpResponse::NotImplemented().finish()
+        .route("", web::post().to(register));
 }
 
 #[derive(Deserialize)]
@@ -26,7 +20,7 @@ pub struct NodeQuery {
 }
 
 /// List, fetch and search pods
-async fn get(state: web::Data<R8s>, query: web::Query<NodeQuery>) -> impl Responder {
+async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
     if query.watch.unwrap_or(false) {
         // Watch mode
         let mut rx = state.node_tx.subscribe();
@@ -60,7 +54,7 @@ async fn get(state: web::Data<R8s>, query: web::Query<NodeQuery>) -> impl Respon
 /// Nodes register to the service
 async fn register(
     req: HttpRequest,
-    state: web::Data<R8s>,
+    state: State,
     payload: web::Json<NodeRegisterReq>,
 ) -> impl Responder {
     let address = req
