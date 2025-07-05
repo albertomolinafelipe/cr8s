@@ -24,7 +24,7 @@ async fn root() -> impl Responder {
 }
 
 async fn name(state: State) -> impl Responder {
-    tracing::info!("Node id: {}", state.node_name());
+    tracing::debug!("Node id: {}", state.node_name());
     HttpResponse::Ok().body(state.node_name().to_string())
 }
 

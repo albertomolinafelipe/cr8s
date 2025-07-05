@@ -1,7 +1,9 @@
 use actix_web::web;
 use bollard::secret::ContainerStateStatusEnum;
 use dashmap::{DashMap, DashSet};
+use serde::{Deserialize, Serialize};
 use shared::models::PodObject;
+use std::collections::HashMap;
 use std::env;
 use std::sync::RwLock;
 use uuid::Uuid;
@@ -10,13 +12,14 @@ use crate::docker::DockerManager;
 
 pub type State = web::Data<NodeState>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PodRuntime {
     pub id: Uuid,
-    pub containers: Vec<ContainerRuntime>,
+    pub name: String,
+    pub containers: HashMap<String, ContainerRuntime>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerRuntime {
     pub id: String,
     pub name: String,
@@ -29,15 +32,22 @@ pub struct NodeState {
     pub docker_mgr: DockerManager,
     node_name: RwLock<String>,
     pods: DashMap<Uuid, PodObject>,
-    pod_runtimes: DashMap<Uuid, PodRuntime>,
+    pub pod_runtimes: DashMap<Uuid, PodRuntime>,
     pod_names: DashSet<String>,
 }
 
 impl NodeState {
     pub fn new() -> Self {
+        let docker_mgr = DockerManager::start()
+            .inspect_err(|err| {
+                tracing::error!(
+                    error=%err,
+                    "Failed to start docker manager")
+            })
+            .expect("");
         Self {
             config: load_config(),
-            docker_mgr: DockerManager::new(),
+            docker_mgr,
             node_name: RwLock::new(String::new()),
             pods: DashMap::new(),
             pod_runtimes: DashMap::new(),

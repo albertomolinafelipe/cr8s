@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use bollard::secret::ContainerStateStatusEnum;
+use reqwest::Client;
+use shared::{api::PodStatusUpdate, models::PodStatus};
 use tokio::time;
 
 use crate::state::State;
@@ -9,9 +12,43 @@ pub async fn run(state: State) -> Result<(), String> {
     tracing::info!(sync=%state.config.sync_loop, "Starting sync loop");
     loop {
         interval.tick().await;
-        tracing::warn!("Should send status, not implementd");
-        if false {
-            return Ok(());
+        let client = Client::new();
+        for p in state.pod_runtimes.iter() {
+            let mut containers_status: Vec<(String, String)> = Vec::new();
+            // Over simplification obv
+            let mut pod_status = PodStatus::Succeeded;
+            for c in p.containers.values() {
+                let status = state.docker_mgr.get_container_status(&c.id).await;
+                match status {
+                    Ok(s) => {
+                        tracing::debug!(container=%c.name, status=%s, "Container inspect");
+                        containers_status.push((c.name.clone(), s.to_string()));
+                        if s != ContainerStateStatusEnum::RUNNING {
+                            pod_status = PodStatus::Succeeded;
+                        }
+                    }
+                    Err(e) => tracing::error!(error=%e, "Failed to get container status"),
+                }
+            }
+            let update = PodStatusUpdate {
+                id: p.id,
+                status: pod_status,
+                containers_status,
+                node_name: state.node_name(),
+            };
+            let response = client
+                .post(format!(
+                    "{}/pods/{}/status",
+                    state.config.server_url, p.name
+                ))
+                .json(&update)
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) => tracing::debug!(response=%resp.status(), "Status update sent"),
+                Err(err) => tracing::warn!(error=%err, "Status update failed"),
+            }
         }
     }
 }

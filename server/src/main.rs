@@ -13,11 +13,10 @@ const R8S_SERVER_PORT: u16 = 7620;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::new(
-            "actix_server=warn,actix_web=warn,server=info",
-        ))
-        .init();
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,server=trace"));
+
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
     let port = env::var("R8S_SERVER_PORT")
         .ok()
         .and_then(|s| s.parse().ok())

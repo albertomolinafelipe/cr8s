@@ -14,7 +14,7 @@ use uuid::Uuid;
 pub async fn run(state: State, tx: Sender<Uuid>) -> Result<(), String> {
     register(state.clone()).await?;
     println!("r8s-node ready");
-    tracing::info!("Starting assignment controller");
+    tracing::debug!("Starting assignment controller");
     watch(state.clone(), &tx).await?;
 
     Ok(())
@@ -38,13 +38,13 @@ async fn watch(state: State, tx: &Sender<Uuid>) -> Result<(), String> {
             let stream_reader = StreamReader::new(byte_stream);
             let mut lines = BufReader::new(stream_reader).lines();
 
-            tracing::info!("Started watching pod assignments for {}", state.node_name());
+            tracing::debug!(node_name=%state.node_name(), "Started watching pod assignments for");
 
             while let Ok(Some(line)) = lines.next_line().await {
                 match serde_json::from_str::<PodEvent>(&line) {
                     Ok(event) => handle_event(state.clone(), event, tx).await,
                     Err(e) => {
-                        tracing::warn!("Failed to deserialize line: {}\nError: {}", line, e);
+                        tracing::warn!(line=%line, error=%e, "Failed to deserialize");
                     }
                 }
             }
@@ -82,16 +82,12 @@ async fn register(state: State) -> Result<(), String> {
 
                 return Ok(());
             }
-            Ok(resp) => {
-                tracing::warn!(
-                    "Register attempt {} failed: HTTP {}",
-                    attempt,
-                    resp.status()
-                );
-            }
-            Err(err) => {
-                tracing::warn!("Register attempt {} failed: {}", attempt, err);
-            }
+            Ok(resp) => tracing::warn!(
+                "Register attempt {} failed: HTTP {}",
+                attempt,
+                resp.status()
+            ),
+            Err(err) => tracing::warn!("Register attempt {} failed: {}", attempt, err),
         }
 
         sleep(Duration::from_secs(2)).await;

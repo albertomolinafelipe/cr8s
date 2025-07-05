@@ -2,6 +2,8 @@ services:
   r8s-server:
     image: r8s-server
     container_name: r8s-server
+    environment:
+        RUST_LOG: server=trace
     ports:
       - "7620:7620"
     networks:
@@ -19,6 +21,7 @@ services:
         NODE_NAME: "r8s-node-1"
         R8S_SERVER_PORT: 7620
         R8S_SERVER_HOST: "r8s-server"
+        RUST_LOG: node=trace
     depends_on:
       - r8s-server
     networks:

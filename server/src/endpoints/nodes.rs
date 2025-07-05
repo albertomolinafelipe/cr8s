@@ -16,7 +16,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 async fn update_status(_state: web::Data<R8s>, node_name: web::Path<String>) -> impl Responder {
-    tracing::info!("Got update call for node: {}", node_name);
+    tracing::debug!("Got update call for node: {}", node_name);
     HttpResponse::NotImplemented().finish()
 }
 

@@ -1,4 +1,5 @@
 use actix_web::HttpResponse;
+use chrono::Utc;
 use dashmap::{DashMap, DashSet};
 use etcd_client::GetOptions;
 use futures::future::join_all;
@@ -51,11 +52,14 @@ pub struct R8s {
     pub pod_tx: broadcast::Sender<PodEvent>,
     pub node_tx: broadcast::Sender<NodeEvent>,
 
-    node_names: DashSet<String>,
+    pub node_names: DashSet<String>,
     node_addrs: DashSet<String>,
     /// Assigned pods per node
-    pod_map: DashMap<String, DashSet<Uuid>>,
-    pod_name_idx: DashMap<String, Uuid>,
+    pub pod_map: DashMap<String, DashSet<Uuid>>,
+    pub pod_name_idx: DashMap<String, Uuid>,
+    // ETCD storage
+    // /pods/{pod_id}
+    // /nodes/{node_name}
 }
 
 impl R8s {
@@ -270,6 +274,40 @@ impl R8s {
                     .and_then(|val| serde_json::from_str::<Node>(val).ok())
             })
             .collect()
+    }
+
+    pub async fn update_node_heartbeat(&self, node_name: &str) -> Result<(), StoreError> {
+        let key = format!("/nodes/{}", node_name);
+
+        let mut etcd = self.etcd.clone();
+        let resp = etcd
+            .get(key.clone(), None)
+            .await
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+
+        let Some(kv) = resp.kvs().first() else {
+            return Err(StoreError::NotFound(format!(
+                "Node {} not found",
+                node_name
+            )));
+        };
+
+        let val_str = kv
+            .value_str()
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+        let mut node: Node = serde_json::from_str(val_str)
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+
+        node.last_heartbeat = Utc::now();
+
+        let new_val =
+            serde_json::to_string(&node).map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+
+        etcd.put(key, new_val, None)
+            .await
+            .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
+
+        Ok(())
     }
 
     async fn fetch_pod(&self, id: Uuid) -> Result<PodObject, StoreError> {

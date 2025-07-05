@@ -12,18 +12,22 @@ spec:
           value: production
         - name: DEBUG
           value: "false"
----
-kind: Pod
-metadata:
-  name: lite-db-pod
-spec:
-  containers:
-    - name: caddy
-      image: caddy:alpine
-      ports:
-      - containerPort: 80
-
     - name: tinyproxy
       image: vimagick/tinyproxy
       ports:
       - containerPort: 8888
+# ---
+# kind: Pod
+# metadata:
+#   name: lite-db-pod
+# spec:
+#   containers:
+#     - name: caddy
+#       image: caddy:alpine
+#       ports:
+#       - containerPort: 80
+
+#     - name: tinyproxy
+#       image: vimagick/tinyproxy
+#       ports:
+#       - containerPort: 8888

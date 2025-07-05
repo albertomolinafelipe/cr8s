@@ -17,7 +17,7 @@ use uuid::Uuid;
 type State = Arc<SchedulerState>;
 
 pub async fn run() {
-    tracing::info!("Initializing scheduler ");
+    tracing::debug!("Initializing scheduler ");
     let (tx, mut rx) = mpsc::channel::<Uuid>(100);
     let state = Arc::new(SchedulerState::new(tx, None));
 
@@ -112,7 +112,7 @@ where
             let stream_reader = StreamReader::new(byte_stream);
             let mut lines = BufReader::new(stream_reader).lines();
 
-            tracing::info!("Started watching stream: {}", url);
+            tracing::debug!(url=%url, "Started watching stream");
 
             while let Ok(Some(line)) = lines.next_line().await {
                 match serde_json::from_str::<T>(&line) {
@@ -121,13 +121,13 @@ where
                 }
             }
 
-            tracing::warn!("Watch stream ended: {}", url);
+            tracing::warn!(url=%url, "Watch stream ended");
         }
         Ok(resp) => {
-            tracing::error!("Watch request failed: HTTP {}", resp.status());
+            tracing::error!(status=%resp.status(), "Watch request failed: HTTP");
         }
         Err(err) => {
-            tracing::error!("Watch request error: {}", err);
+            tracing::error!(error=%err, "Watch request error");
         }
     }
 }
@@ -188,7 +188,6 @@ async fn schedule(state: State, id: Uuid) {
             );
         }
         Err(err) => {
-            println!("Failed to patch {}", err);
             tracing::error!("Failed to patch pod: {}", err);
         }
     }

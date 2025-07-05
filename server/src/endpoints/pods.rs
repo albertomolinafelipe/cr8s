@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::store::R8s;
 use actix_web::{
     HttpResponse, Responder,
@@ -5,17 +7,19 @@ use actix_web::{
 };
 use shared::api::{
     CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodQueryParams,
+    PodStatusUpdate,
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(get))
         .route("/{pod_name}", web::patch().to(update))
+        .route("/{pod_name}/status", web::post().to(status))
         .route("", web::post().to(create));
 }
 
 /// List, fetch and search pods
 async fn get(state: web::Data<R8s>, query: web::Query<PodQueryParams>) -> impl Responder {
-    tracing::info!(
+    tracing::debug!(
         watch=%query.watch.unwrap_or(false),
         node_name=%query.node_name.clone().unwrap_or("None".to_string()),
         "Get pod request");
@@ -63,6 +67,46 @@ async fn get(state: web::Data<R8s>, query: web::Query<PodQueryParams>) -> impl R
     }
 }
 
+/// Update pod status
+async fn status(
+    state: web::Data<R8s>,
+    path_string: web::Path<String>,
+    body: web::Json<PodStatusUpdate>,
+) -> impl Responder {
+    let status_update = body.into_inner();
+    let pod_name = path_string.into_inner();
+
+    // Check pod name and id exists
+    match state.pod_name_idx.get(&pod_name) {
+        Some(id) => {
+            if id.deref() != &status_update.id {
+                return HttpResponse::BadRequest().body("Pod id and pod name don't match");
+            }
+        }
+        None => return HttpResponse::NotFound().finish(),
+    }
+
+    // Check node name and that pod is assigned to node
+    if !state.node_names.contains(&status_update.node_name) {
+        return HttpResponse::Forbidden().finish();
+    }
+    match state.pod_map.get(&status_update.node_name) {
+        Some(set) if set.contains(&status_update.id) => {}
+        _ => return HttpResponse::Unauthorized().finish(),
+    }
+
+    // Update node heartbeat
+    if let Err(error) = state.update_node_heartbeat(&status_update.node_name).await {
+        tracing::warn!(error=%error, "Failed to update node heartbeat");
+        // return error.to_http_response();
+    }
+    tracing::trace!("Updated node heartbeat");
+
+    // Check body container names match spec
+    // Update status
+    HttpResponse::NotImplemented().finish()
+}
+
 /// Update pod
 async fn update(
     state: web::Data<R8s>,
@@ -97,7 +141,7 @@ async fn update(
 async fn create(state: web::Data<R8s>, body: web::Json<PodManifest>) -> impl Responder {
     let spec_obj = body.into_inner();
     let pod_name = spec_obj.metadata.name.clone();
-    tracing::info!(name=%pod_name, "Received pod manifest");
+    tracing::debug!(name=%pod_name, "Received pod manifest");
 
     match state.add_pod(spec_obj.spec, spec_obj.metadata).await {
         Ok(id) => {

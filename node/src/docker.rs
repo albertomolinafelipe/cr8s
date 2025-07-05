@@ -3,11 +3,37 @@ use bollard::{
     Docker,
     container::{Config, CreateContainerOptions, InspectContainerOptions, StartContainerOptions},
     image::CreateImageOptions,
+    secret::ContainerStateStatusEnum,
 };
 use dashmap::DashSet;
 use futures_util::stream::TryStreamExt;
 use shared::models::PodObject;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
+
+#[derive(Debug)]
+pub enum DockerError {
+    ConnectionError(String),
+    ImagePullError(String),
+    ContainerCreationError(String),
+    ContainerStartError(String),
+    ContainerInspectError(String),
+}
+
+impl fmt::Display for DockerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DockerError::ConnectionError(msg) => write!(f, "Connection error: {}", msg),
+            DockerError::ImagePullError(msg) => write!(f, "Image pull error: {}", msg),
+            DockerError::ContainerCreationError(msg) => {
+                write!(f, "Container creation error: {}", msg)
+            }
+            DockerError::ContainerStartError(msg) => write!(f, "Container start error: {}", msg),
+            DockerError::ContainerInspectError(msg) => {
+                write!(f, "Container inspect error: {}", msg)
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct DockerManager {
@@ -16,12 +42,14 @@ pub struct DockerManager {
 }
 
 impl DockerManager {
-    pub fn new() -> Self {
-        DockerManager {
+    pub fn start() -> Result<Self, DockerError> {
+        let client = Docker::connect_with_local_defaults()
+            .map_err(|e| DockerError::ConnectionError(e.to_string()))?;
+
+        Ok(DockerManager {
             images: DashSet::new(),
-            client: Docker::connect_with_local_defaults()
-                .expect("Failed to connect to Docker daemon"),
-        }
+            client,
+        })
     }
 
     pub fn client(&self) -> Docker {
@@ -36,11 +64,28 @@ impl DockerManager {
         self.images.insert(image);
     }
 
-    pub async fn start_pod(&self, pod: PodObject) -> PodRuntime {
+    pub async fn get_container_status(
+        &self,
+        id: &String,
+    ) -> Result<ContainerStateStatusEnum, DockerError> {
         let docker = self.client();
-        let mut container_runtimes = Vec::new();
+        let inspection = docker
+            .inspect_container(id, None::<InspectContainerOptions>)
+            .await
+            .map_err(|e| DockerError::ContainerInspectError(e.to_string()))?;
+        Ok(inspection
+            .state
+            .as_ref()
+            .and_then(|s| s.status.clone())
+            .unwrap_or_else(|| ContainerStateStatusEnum::EMPTY))
+    }
+
+    pub async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
+        let docker = self.client();
+        let mut container_runtimes = HashMap::new();
+
         for container_spec in &pod.spec.containers {
-            self.ensure_image(&docker, &container_spec.image).await;
+            self.ensure_image(&docker, &container_spec.image).await?;
 
             let container_name = format!("pod_{}_{}", pod.metadata.user.name, container_spec.name);
 
@@ -68,47 +113,52 @@ impl DockerManager {
             let create_response = docker
                 .create_container(options, config)
                 .await
-                .expect("Failed to create container");
+                .map_err(|e| DockerError::ContainerCreationError(e.to_string()))?;
 
             let container_id = create_response.id;
 
             docker
                 .start_container(&container_id, None::<StartContainerOptions<String>>)
                 .await
-                .expect("Failed to start container");
+                .map_err(|e| DockerError::ContainerStartError(e.to_string()))?;
 
             let inspection = docker
                 .inspect_container(&container_id, None::<InspectContainerOptions>)
                 .await
-                .expect("Failed to inspect container");
+                .map_err(|e| DockerError::ContainerInspectError(e.to_string()))?;
 
             let status = inspection
                 .state
                 .as_ref()
                 .and_then(|s| s.status.clone())
-                .unwrap();
+                .unwrap_or_else(|| ContainerStateStatusEnum::EMPTY);
 
-            tracing::info!(
+            tracing::debug!(
                 id=%&container_id[..8.min(container_id.len())],
                 status=%status,
                 "Started container"
             );
-            container_runtimes.push(ContainerRuntime {
-                id: container_id,
-                name: container_name,
-                status,
-            });
+
+            container_runtimes.insert(
+                container_spec.name.clone(),
+                ContainerRuntime {
+                    id: container_id,
+                    name: container_name,
+                    status,
+                },
+            );
         }
 
-        PodRuntime {
+        Ok(PodRuntime {
             id: pod.id,
+            name: pod.metadata.user.name,
             containers: container_runtimes,
-        }
+        })
     }
 
-    async fn ensure_image(&self, docker: &Docker, image: &str) {
+    async fn ensure_image(&self, docker: &Docker, image: &str) -> Result<(), DockerError> {
         if self.has_image(image) {
-            return;
+            return Ok(());
         }
 
         let options = Some(CreateImageOptions {
@@ -117,10 +167,16 @@ impl DockerManager {
         });
 
         let mut stream = docker.create_image(options, None, None);
-        while let Some(_status) = stream.try_next().await.unwrap_or(None) {
-            // logging?
-        }
+
+        while let Some(_status) = stream
+            .try_next()
+            .await
+            .map_err(|e| DockerError::ImagePullError(e.to_string()))?
+        {}
+
         tracing::info!(image=%image, "Pulled container");
         self.mark_image_as_pulled(image.to_string());
+
+        Ok(())
     }
 }

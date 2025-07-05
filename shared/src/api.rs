@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::models::{Node, PodObject, PodSpec, UserMetadata};
+use crate::models::{Node, PodObject, PodSpec, PodStatus, UserMetadata};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct NodeRegisterReq {
@@ -28,7 +28,7 @@ pub struct PodManifest {
     pub spec: PodSpec,
 }
 
-// ============================= EVENT
+// ============================= EVENTS
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PodEvent {
@@ -66,4 +66,14 @@ pub enum PodField {
     NodeName,
     #[serde(rename = "pod_status")]
     PodStatus,
+}
+
+// ============================= POD STATUS UPDATES
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct PodStatusUpdate {
+    pub id: Uuid,
+    pub node_name: String,
+    pub status: PodStatus,
+    pub containers_status: Vec<(String, String)>,
 }

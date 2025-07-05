@@ -27,13 +27,24 @@ async fn reconciliate(state: State, id: Uuid) {
         return;
     }
 
-    let runtime = state.docker_mgr.start_pod(pod).await;
-    runtime.containers.iter().for_each(|c| match c.status {
+    let runtime = match state.docker_mgr.start_pod(pod).await {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            tracing::error!(error=%err, "Failed to start pod");
+            return;
+        }
+    };
+
+    runtime.containers.values().for_each(|c| match c.status {
         ContainerStateStatusEnum::RUNNING => {}
+        ContainerStateStatusEnum::CREATED => {}
         ContainerStateStatusEnum::EXITED => {}
         _ => {
             tracing::warn!(name=%c.name, "Container didn't start");
         }
     });
-    state.add_pod_runtime(runtime).ok();
+    if let Err(msg) = state.add_pod_runtime(runtime) {
+        tracing::error!(error=%msg, "Could not add pod runtime to state");
+        return;
+    }
 }

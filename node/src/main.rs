@@ -14,9 +14,10 @@ mod worker;
 async fn main() -> Result<(), String> {
     let state = web::Data::new(state::NodeState::new());
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::new("actix_server=warn,actix_web=warn,node=info"))
-        .init();
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,node=trace"));
+
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     let (tx, rx) = mpsc::channel::<Uuid>(100);
 
