@@ -98,6 +98,7 @@ async fn _spawn_control_plane(scheduler: bool, drift: bool) -> TestControlPlane 
         .with_wait_for(testcontainers::core::WaitFor::message_on_stdout(
             "r8s-server ready",
         ))
+        .with_env_var("RUST_LOG", "server=trace")
         .with_env_var("R8S_SERVER_PORT", "7620")
         .with_env_var("ETCD_ADDR", etcd_addr);
 
@@ -137,6 +138,7 @@ pub async fn spawn_node(s: &TestControlPlane) -> TestNode {
         .with_env_var("R8S_SERVER_PORT", "7620")
         .with_env_var("NODE_PORT", "8081")
         .with_env_var("NODE_NAME", name.clone())
+        .with_env_var("RUST_LOG", "node=trace")
         .with_container_name(random_name())
         .with_network(s.network.clone())
         .start()

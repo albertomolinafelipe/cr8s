@@ -417,7 +417,6 @@ async fn pod_assign_node_double_assign() {
         .send()
         .await
         .unwrap();
-
     assert_eq!(
         res.status(),
         StatusCode::NO_CONTENT,
