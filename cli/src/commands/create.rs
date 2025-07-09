@@ -9,14 +9,14 @@ use tokio::fs;
 use crate::config::Config;
 
 #[derive(Parser, Debug)]
-pub struct ApplyArgs {
+pub struct CreateArgs {
     /// Path to the YAML file containing the deployment spec
     #[clap(short = 'f', long = "file")]
     pub file: String,
 }
 
 #[tokio::main]
-pub async fn handle(config: &Config, args: &ApplyArgs) {
+pub async fn handle(config: &Config, args: &CreateArgs) {
     let content = match fs::read_to_string(&args.file).await {
         Ok(c) => c,
         Err(e) => {

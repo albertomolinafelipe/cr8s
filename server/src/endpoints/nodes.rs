@@ -8,6 +8,7 @@ use shared::{
     api::{EventType, NodeEvent, NodeRegisterReq},
     models::{Node, NodeStatus},
 };
+use uuid::Uuid;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(get))
@@ -63,6 +64,7 @@ async fn register(
         .unwrap_or_else(|| "unknown".to_string());
 
     let node = Node {
+        id: Uuid::new_v4(),
         name: payload.name.clone(),
         addr: format!("{}:{}", address, payload.port),
         status: NodeStatus::Ready,

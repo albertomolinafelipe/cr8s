@@ -60,6 +60,7 @@ pub struct Metadata {
 /// Represents a node in the cluster.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Node {
+    pub id: Uuid,
     pub name: String,
     pub status: NodeStatus,
     pub addr: String,
@@ -109,6 +110,7 @@ impl ContainerSpec {
 impl Node {
     pub fn new() -> Self {
         Self {
+            id: Uuid::new_v4(),
             name: "node_name".to_string(),
             status: NodeStatus::Ready,
             addr: "0.0.0.0".to_string(),

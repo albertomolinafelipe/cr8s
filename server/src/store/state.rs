@@ -221,7 +221,7 @@ fn validate_pod(spec: &PodSpec) -> Result<(), StoreError> {
     Ok(())
 }
 
-pub fn validate_container_statuses(spec: &PodSpec, container_statuses: &mut Vec<(String, String)>) {
+fn validate_container_statuses(spec: &PodSpec, container_statuses: &mut Vec<(String, String)>) {
     let valid_names: HashSet<_> = spec.containers.iter().map(|c| c.name.clone()).collect();
 
     // Filter out any entries invalid names, ignore extra names

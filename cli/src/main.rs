@@ -16,11 +16,7 @@ enum Commands {
     /// Retrieve cluster resources
     Get(commands::get::GetArgs),
     /// Create or update resources from a configuration file
-    Apply(commands::apply::ApplyArgs),
-    /// Delete specified resources
-    Delete,
-    /// Show detailed information about a resource
-    Describe,
+    Create(commands::create::CreateArgs),
 }
 
 fn main() {
@@ -29,9 +25,6 @@ fn main() {
 
     match cli.command {
         Commands::Get(args) => commands::get::handle(&config, &args),
-        Commands::Apply(args) => commands::apply::handle(&config, &args),
-        _ => {
-            println!("not implemented...");
-        }
+        Commands::Create(args) => commands::create::handle(&config, &args),
     }
 }
