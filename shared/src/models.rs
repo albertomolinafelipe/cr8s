@@ -51,8 +51,8 @@ pub struct UserMetadata {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Metadata {
     pub created_at: DateTime<Utc>,
-    generation: u16,
-    modified_at: DateTime<Utc>,
+    pub generation: u16,
+    pub modified_at: DateTime<Utc>,
     #[serde(flatten)]
     pub user: UserMetadata,
 }
@@ -85,55 +85,51 @@ pub enum PodStatus {
     Unknown,
 }
 
-impl Metadata {
-    pub fn new(user: UserMetadata) -> Self {
+impl Default for Metadata {
+    fn default() -> Self {
         Self {
             created_at: Utc::now(),
             generation: 0,
             modified_at: Utc::now(),
-            user,
+            user: UserMetadata::default(),
         }
     }
 }
 
-impl ContainerSpec {
-    pub fn new() -> Self {
+impl Default for UserMetadata {
+    fn default() -> Self {
         Self {
-            name: "name".to_string(),
-            image: "image".to_string(),
+            name: Uuid::new_v4().to_string(),
+        }
+    }
+}
+
+impl Default for PodSpec {
+    fn default() -> Self {
+        Self { containers: vec![] }
+    }
+}
+
+impl Default for ContainerSpec {
+    fn default() -> Self {
+        Self {
+            name: Uuid::new_v4().to_string(),
+            image: Uuid::new_v4().to_string(),
             ports: None,
             env: None,
         }
     }
 }
 
-impl Node {
-    pub fn new() -> Self {
+impl Default for Node {
+    fn default() -> Self {
         Self {
             id: Uuid::new_v4(),
-            name: "node_name".to_string(),
+            name: Uuid::new_v4().to_string(),
             status: NodeStatus::Ready,
-            addr: "0.0.0.0".to_string(),
+            addr: "0.0.0.0:1000".to_string(),
             started_at: Utc::now(),
             last_heartbeat: Utc::now(),
-        }
-    }
-}
-
-impl PodObject {
-    pub fn new() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            node_name: "node_name".to_string(),
-            metadata: Metadata::new(UserMetadata {
-                name: "pod_name".to_string(),
-            }),
-            pod_status: PodStatus::Pending,
-            last_status_update: None,
-            container_status: Vec::new(),
-            spec: PodSpec {
-                containers: Vec::new(),
-            },
         }
     }
 }
@@ -143,15 +139,11 @@ impl Default for PodObject {
         Self {
             id: Uuid::new_v4(),
             node_name: "".to_string(),
-            metadata: Metadata::new(UserMetadata {
-                name: "".to_string(),
-            }),
+            metadata: Metadata::default(),
             pod_status: PodStatus::Pending,
             last_status_update: None,
             container_status: Vec::new(),
-            spec: PodSpec {
-                containers: Vec::new(),
-            },
+            spec: PodSpec::default(),
         }
     }
 }

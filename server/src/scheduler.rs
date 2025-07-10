@@ -212,9 +212,9 @@ mod tests {
 
         let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
-        let pod = PodObject::new();
+        let pod = PodObject::default();
 
-        let node = Node::new();
+        let node = Node::default();
         let node_event = NodeEvent {
             node: node.clone(),
             event_type: EventType::Added,
@@ -252,7 +252,7 @@ mod tests {
 
         let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
-        let pod = PodObject::new();
+        let pod = PodObject::default();
         let event = PodEvent {
             pod: pod.clone(),
             event_type: EventType::Added,
@@ -265,7 +265,7 @@ mod tests {
         assert!(unscheduled_set.unwrap().contains(&pod.id));
 
         // Send event
-        let node = Node::new();
+        let node = Node::default();
         let node_event = NodeEvent {
             node: node.clone(),
             event_type: EventType::Added,

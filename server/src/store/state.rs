@@ -1,3 +1,4 @@
+use actix_web::web::Data;
 use chrono::Utc;
 use dashmap::{DashMap, DashSet};
 use futures::future::join_all;
@@ -10,10 +11,26 @@ use shared::{
     models::{Metadata, Node, PodObject, PodSpec, PodStatus, UserMetadata},
 };
 
-use super::{backend::Backend, errors::StoreError};
+use crate::State;
+
+use super::{
+    errors::StoreError,
+    store::{EtcdStore, Store},
+};
+
+pub async fn new_state() -> State {
+    let r8s = R8s::new().await;
+    Data::new(r8s)
+}
+
+#[cfg(test)]
+pub async fn new_state_with_store(store: Box<dyn Store + Send + Sync>) -> State {
+    let r8s = R8s::default_with_store(store).await;
+    Data::new(r8s)
+}
 
 pub struct R8s {
-    backend: Backend,
+    store: Box<dyn Store + Send + Sync>,
     pub pod_tx: broadcast::Sender<PodEvent>,
     pub node_tx: broadcast::Sender<NodeEvent>,
 
@@ -26,11 +43,14 @@ pub struct R8s {
 
 impl R8s {
     pub async fn new() -> Self {
+        Self::default_with_store(Box::new(EtcdStore::new().await)).await
+    }
+
+    async fn default_with_store(store: Box<dyn Store + Send + Sync>) -> Self {
         let (pod_tx, _) = broadcast::channel(10);
         let (node_tx, _) = broadcast::channel(10);
-        let backend = Backend::new().await;
         Self {
-            backend,
+            store,
             pod_tx,
             node_tx,
             node_names: DashSet::new(),
@@ -40,20 +60,23 @@ impl R8s {
         }
     }
 
-    pub async fn add_pod(&self, spec: PodSpec, metadata: UserMetadata) -> Result<Uuid, StoreError> {
+    pub async fn add_pod(&self, spec: PodSpec, user: UserMetadata) -> Result<Uuid, StoreError> {
         // validate spec and name
         validate_pod(&spec)?;
-        (!self.pod_name_idx.contains_key(&metadata.name))
+        (!self.pod_name_idx.contains_key(&user.name))
             .then_some(())
             .ok_or_else(|| StoreError::Conflict("Duplicate pod name".to_string()))?;
 
         // Since its low level object manifest is not stored
         let pod = PodObject {
-            metadata: Metadata::new(metadata),
+            metadata: Metadata {
+                user,
+                ..Default::default()
+            },
             spec,
             ..Default::default()
         };
-        self.backend.put_pod(&pod.id, &pod).await?;
+        self.store.put_pod(&pod.id, &pod).await?;
         self.pod_name_idx
             .insert(pod.metadata.user.name.clone(), pod.id);
         self.pod_map
@@ -91,10 +114,10 @@ impl R8s {
 
         // Check pod is unassigned
         let mut pod = self
-            .backend
+            .store
             .get_pod(pod_id.clone())
             .await?
-            .ok_or(StoreError::NotFound("Pod not found in backend".to_string()))?;
+            .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
         if !pod.node_name.is_empty() {
             return Err(StoreError::Conflict(format!(
                 "Pod ({}) is already assigned to a node",
@@ -104,7 +127,7 @@ impl R8s {
 
         // Assign and insert pod
         pod.node_name = node_name.clone();
-        self.backend.put_pod(&pod.id, &pod).await?;
+        self.store.put_pod(&pod.id, &pod).await?;
 
         // Update indeces
         unassigned_entry.remove(&*pod_id);
@@ -126,14 +149,16 @@ impl R8s {
         status: PodStatus,
         container_statuses: &mut Vec<(String, String)>,
     ) -> Result<(), StoreError> {
-        let mut pod = self.backend.get_pod(id).await?.ok_or(StoreError::NotFound(
-            "Node not found in backend".to_string(),
-        ))?;
+        let mut pod = self
+            .store
+            .get_pod(id)
+            .await?
+            .ok_or(StoreError::NotFound("Node not found in store".to_string()))?;
         validate_container_statuses(&pod.spec, container_statuses);
         pod.last_status_update = Some(Utc::now());
         pod.pod_status = status;
         pod.container_status = container_statuses.clone();
-        self.backend.put_pod(&id, &pod).await?;
+        self.store.put_pod(&id, &pod).await?;
         Ok(())
     }
 
@@ -143,23 +168,19 @@ impl R8s {
                 let Some(pod_ids_ref) = self.pod_map.get(&node_name) else {
                     return vec![];
                 };
-                join_all(
-                    pod_ids_ref
-                        .iter()
-                        .map(|id| self.backend.get_pod(id.clone())),
-                )
-                .await
-                .into_iter()
-                .inspect(|res| {
-                    if let Err(e) = res {
-                        tracing::error!(error=%e, "Error fetching pod");
-                    }
-                })
-                .filter_map(Result::ok)
-                .flatten()
-                .collect()
+                join_all(pod_ids_ref.iter().map(|id| self.store.get_pod(id.clone())))
+                    .await
+                    .into_iter()
+                    .inspect(|res| {
+                        if let Err(e) = res {
+                            tracing::error!(error=%e, "Error fetching pod");
+                        }
+                    })
+                    .filter_map(Result::ok)
+                    .flatten()
+                    .collect()
             }
-            None => self.backend.list_pods().await.unwrap_or_default(),
+            None => self.store.list_pods().await.unwrap_or_default(),
         }
     }
 
@@ -173,9 +194,6 @@ impl R8s {
             .ok_or_else(|| StoreError::Conflict("Duplicate node name or address".to_string()))?;
 
         // Into store
-        self.backend.put_node(&node.name, node).await?;
-
-        // Into index
         self.node_addrs.insert(node.addr.clone());
         self.node_names.insert(node.name.clone());
 
@@ -188,20 +206,18 @@ impl R8s {
     }
 
     pub async fn get_nodes(&self) -> Vec<Node> {
-        self.backend.list_nodes().await.unwrap_or_default()
+        self.store.list_nodes().await.unwrap_or_default()
     }
 
     pub async fn update_node_heartbeat(&self, node_name: &str) -> Result<(), StoreError> {
         let mut node = self
-            .backend
+            .store
             .get_node(node_name)
             .await?
-            .ok_or(StoreError::NotFound(
-                "Node not found in backend".to_string(),
-            ))?;
+            .ok_or(StoreError::NotFound("Node not found in store".to_string()))?;
 
         node.last_heartbeat = Utc::now();
-        self.backend.put_node(node_name, &node).await
+        self.store.put_node(node_name, &node).await
     }
 }
 

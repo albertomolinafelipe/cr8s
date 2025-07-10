@@ -24,11 +24,14 @@ jobs:
         toolchain: stable
         override: true
 
-    - name: Build Docker images
-      run: make
+    - name: Install protoc (protobuf compiler)
+      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+    - name: Compile all components
+      run: make build
+    
+    - name: Install cargo-nextest
+      run: cargo install cargo-nextest --locked
 
     - name: Run integration tests
-      env:
-        TESTCONTAINERS_DOCKER_CLIENT_TIMEOUT: 60
-        TESTCONTAINERS_RYUK_DISABLED: true
-      run: cargo test -p tests -- --nocapture
+      run: cargo nextest run --all-targets --all-features
