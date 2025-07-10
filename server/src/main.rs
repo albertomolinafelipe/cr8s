@@ -7,7 +7,7 @@ mod endpoints;
 mod scheduler;
 mod store;
 
-use store::state::R8s;
+use store::state::{R8s, new_state};
 
 const R8S_SERVER_PORT: u16 = 7620;
 type State = web::Data<R8s>;
@@ -22,7 +22,7 @@ async fn main() -> std::io::Result<()> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(R8S_SERVER_PORT);
-    let state: State = web::Data::new(R8s::new().await);
+    let state: State = new_state().await;
 
     // Start controller and scheduler
     if env::var("RUN_SCHEDULER")

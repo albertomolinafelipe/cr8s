@@ -22,7 +22,7 @@ pub struct CreateResponse {
     pub status: String,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Default)]
 pub struct PodManifest {
     pub metadata: UserMetadata,
     pub spec: PodSpec,
@@ -61,8 +61,8 @@ pub struct PodPatch {
 pub enum PodField {
     #[serde(rename = "node_name")]
     NodeName,
-    #[serde(rename = "pod_status")]
-    PodStatus,
+    #[serde(rename = "spec")]
+    Spec,
 }
 
 // ============================= POD STATUS UPDATES

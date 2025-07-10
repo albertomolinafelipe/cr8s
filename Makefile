@@ -11,7 +11,7 @@ all: build docker
 build-%:
 	cargo build -p $* --release
 
-build: build-$(CLI)
+build: build-server build-node build-cli
 	cp target/release/r8sctl .
 
 docker: docker-server docker-node

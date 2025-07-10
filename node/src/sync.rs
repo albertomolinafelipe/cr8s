@@ -35,7 +35,7 @@ pub async fn run(state: State) -> Result<(), String> {
                 node_name: state.node_name(),
             };
             let response = client
-                .post(format!(
+                .patch(format!(
                     "{}/pods/{}/status",
                     state.config.server_url, p.name
                 ))

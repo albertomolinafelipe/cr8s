@@ -5,11 +5,24 @@ use uuid::Uuid;
 
 use super::errors::StoreError;
 
-pub struct Backend {
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait Store: Send + Sync {
+    async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError>;
+    async fn put_pod(&self, id: &Uuid, pod: &PodObject) -> Result<(), StoreError>;
+    async fn list_pods(&self) -> Result<Vec<PodObject>, StoreError>;
+
+    async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError>;
+    async fn put_node(&self, name: &str, node: &Node) -> Result<(), StoreError>;
+    async fn list_nodes(&self) -> Result<Vec<Node>, StoreError>;
+}
+
+pub struct EtcdStore {
     etcd: etcd_client::Client,
 }
 
-impl Backend {
+impl EtcdStore {
     const POD_PREFIX: &'static str = "/r8s/pods/";
     const NODE_PREFIX: &'static str = "/r8s/nodes/";
     pub async fn new() -> Self {
@@ -33,26 +46,6 @@ impl Backend {
     }
     fn node_key(name: &str) -> String {
         format!("{}{}", Self::NODE_PREFIX, name)
-    }
-
-    pub async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError> {
-        self.get_object::<PodObject>(&Self::pod_key(&id)).await
-    }
-    pub async fn put_pod(&self, id: &Uuid, pod: &PodObject) -> Result<(), StoreError> {
-        self.put_object::<PodObject>(&Self::pod_key(id), pod).await
-    }
-    pub async fn list_pods(&self) -> Result<Vec<PodObject>, StoreError> {
-        self.list_objects::<PodObject>(Self::pod_prefix()).await
-    }
-
-    pub async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError> {
-        self.get_object::<Node>(&Self::node_key(name)).await
-    }
-    pub async fn put_node(&self, name: &str, node: &Node) -> Result<(), StoreError> {
-        self.put_object::<Node>(&Self::node_key(name), node).await
-    }
-    pub async fn list_nodes(&self) -> Result<Vec<Node>, StoreError> {
-        self.list_objects::<Node>(Self::node_prefix()).await
     }
 
     async fn get_object<T>(&self, key: &str) -> Result<Option<T>, StoreError>
@@ -117,5 +110,28 @@ impl Backend {
             .collect();
 
         Ok(objs)
+    }
+}
+
+#[async_trait]
+impl Store for EtcdStore {
+    async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError> {
+        self.get_object::<PodObject>(&Self::pod_key(&id)).await
+    }
+    async fn put_pod(&self, id: &Uuid, pod: &PodObject) -> Result<(), StoreError> {
+        self.put_object::<PodObject>(&Self::pod_key(id), pod).await
+    }
+    async fn list_pods(&self) -> Result<Vec<PodObject>, StoreError> {
+        self.list_objects::<PodObject>(Self::pod_prefix()).await
+    }
+
+    async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError> {
+        self.get_object::<Node>(&Self::node_key(name)).await
+    }
+    async fn put_node(&self, name: &str, node: &Node) -> Result<(), StoreError> {
+        self.put_object::<Node>(&Self::node_key(name), node).await
+    }
+    async fn list_nodes(&self) -> Result<Vec<Node>, StoreError> {
+        self.list_objects::<Node>(Self::node_prefix()).await
     }
 }
