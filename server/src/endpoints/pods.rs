@@ -75,15 +75,15 @@ async fn status(
     let pod_name = path_string.into_inner();
 
     // Check pod name exists
-    let Some(pod_id) = state.pod_name_idx.get(&pod_name) else {
+    let Some(pod_id) = state.cache.get_pod_id(&pod_name) else {
         return HttpResponse::NotFound().finish();
     };
 
     // Check node name and that pod is assigned to node
-    if !state.node_names.contains(&status_update.node_name) {
+    if !state.cache.node_name_exists(&status_update.node_name) {
         return HttpResponse::Forbidden().finish();
     }
-    match state.pod_map.get(&status_update.node_name) {
+    match state.cache.get_pod_ids(&status_update.node_name) {
         Some(set) if set.contains(&pod_id) => {}
         _ => return HttpResponse::Unauthorized().finish(),
     }
