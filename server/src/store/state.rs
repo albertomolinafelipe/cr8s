@@ -1,6 +1,5 @@
 use actix_web::web::Data;
 use chrono::Utc;
-use dashmap::{DashMap, DashSet};
 use futures::future::join_all;
 use std::collections::HashSet;
 use tokio::sync::broadcast;
@@ -11,7 +10,7 @@ use shared::{
     models::{Metadata, Node, PodObject, PodSpec, PodStatus, UserMetadata},
 };
 
-use crate::State;
+use crate::{State, store::cache::CacheManager};
 
 use super::{
     errors::StoreError,
@@ -33,12 +32,7 @@ pub struct R8s {
     store: Box<dyn Store + Send + Sync>,
     pub pod_tx: broadcast::Sender<PodEvent>,
     pub node_tx: broadcast::Sender<NodeEvent>,
-
-    pub node_names: DashSet<String>,
-    node_addrs: DashSet<String>,
-    /// Assigned pods per node
-    pub pod_map: DashMap<String, DashSet<Uuid>>,
-    pub pod_name_idx: DashMap<String, Uuid>,
+    pub cache: CacheManager,
 }
 
 impl R8s {
@@ -53,17 +47,14 @@ impl R8s {
             store,
             pod_tx,
             node_tx,
-            node_names: DashSet::new(),
-            node_addrs: DashSet::new(),
-            pod_map: DashMap::new(),
-            pod_name_idx: DashMap::new(),
+            cache: CacheManager::new(),
         }
     }
 
     pub async fn add_pod(&self, spec: PodSpec, user: UserMetadata) -> Result<Uuid, StoreError> {
         // validate spec and name
         validate_pod(&spec)?;
-        (!self.pod_name_idx.contains_key(&user.name))
+        (!self.cache.pod_name_exists(&user.name))
             .then_some(())
             .ok_or_else(|| StoreError::Conflict("Duplicate pod name".to_string()))?;
 
@@ -77,12 +68,7 @@ impl R8s {
             ..Default::default()
         };
         self.store.put_pod(&pod.id, &pod).await?;
-        self.pod_name_idx
-            .insert(pod.metadata.user.name.clone(), pod.id);
-        self.pod_map
-            .entry("".to_string())
-            .or_default()
-            .insert(pod.id);
+        self.cache.add_pod(&pod.metadata.user.name, pod.id);
 
         let event = PodEvent {
             event_type: EventType::Added,
@@ -94,21 +80,21 @@ impl R8s {
 
     pub async fn assign_pod(&self, name: &str, node_name: String) -> Result<(), StoreError> {
         // Check node name exists
-        (self.node_names.contains(&node_name))
+        (self.cache.node_name_exists(&node_name))
             .then_some(())
             .ok_or_else(|| {
                 StoreError::InvalidReference(format!("No node exists with name={}", node_name))
             })?;
 
         // Check pod name exists and its in the unassigned set
-        let Some(pod_id) = self.pod_name_idx.get(name) else {
+        let Some(pod_id) = self.cache.get_pod_id(name) else {
             return Err(StoreError::NotFound(format!(
                 "No pod exists with name={}",
                 name
             )));
         };
 
-        let Some(unassigned_entry) = self.pod_map.get("") else {
+        let Some(unassigned_entry) = self.cache.get_pod_ids("") else {
             return Err(StoreError::Conflict("Unassigned set not found".to_string()));
         };
 
@@ -130,11 +116,8 @@ impl R8s {
         self.store.put_pod(&pod.id, &pod).await?;
 
         // Update indeces
-        unassigned_entry.remove(&*pod_id);
-        self.pod_map
-            .entry(node_name)
-            .or_insert_with(DashSet::new)
-            .insert(*pod_id);
+        unassigned_entry.remove(&pod_id);
+        self.cache.assign_pod(name, &pod_id, &node_name);
         let event = PodEvent {
             event_type: EventType::Modified,
             pod: pod.clone(),
@@ -165,7 +148,7 @@ impl R8s {
     pub async fn get_pods(&self, query: Option<String>) -> Vec<PodObject> {
         match query {
             Some(node_name) => {
-                let Some(pod_ids_ref) = self.pod_map.get(&node_name) else {
+                let Some(pod_ids_ref) = self.cache.get_pod_ids(&node_name) else {
                     return vec![];
                 };
                 join_all(pod_ids_ref.iter().map(|id| self.store.get_pod(id.clone())))
@@ -189,13 +172,11 @@ impl R8s {
             .then_some(())
             .ok_or_else(|| StoreError::WrongFormat("Node name is empty".to_string()))?;
 
-        (!self.node_addrs.contains(&node.addr) && !self.node_names.contains(&node.name))
+        (!self.cache.node_addr_exists(&node.addr) && !self.cache.node_name_exists(&node.name))
             .then_some(())
             .ok_or_else(|| StoreError::Conflict("Duplicate node name or address".to_string()))?;
 
-        // Into store
-        self.node_addrs.insert(node.addr.clone());
-        self.node_names.insert(node.name.clone());
+        self.cache.add_node(&node.name, &node.addr);
 
         let event = NodeEvent {
             event_type: EventType::Added,
