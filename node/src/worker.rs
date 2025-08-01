@@ -1,15 +1,20 @@
-use crate::state::State;
+use crate::{WorkRequest, state::State};
 use bollard::secret::ContainerStateStatusEnum;
+use shared::api::EventType;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
-pub async fn run(state: State, mut rx: Receiver<Uuid>) -> Result<(), String> {
+pub async fn run(state: State, mut rx: Receiver<WorkRequest>) -> Result<(), String> {
     tracing::info!("Starting reconciliation worker");
     tokio::spawn(async move {
-        while let Some(pod_id) = rx.recv().await {
+        while let Some(req) = rx.recv().await {
             let app_state = state.clone();
             tokio::spawn(async move {
-                reconciliate(app_state, pod_id).await;
+                match req.event {
+                    EventType::Modified => reconciliate(app_state, req.id).await,
+                    EventType::Deleted => delete(app_state, req.id).await,
+                    _ => {}
+                }
             });
         }
     });
@@ -36,9 +41,9 @@ async fn reconciliate(state: State, id: Uuid) {
     };
 
     runtime.containers.values().for_each(|c| match c.status {
-        ContainerStateStatusEnum::RUNNING => {}
-        ContainerStateStatusEnum::CREATED => {}
-        ContainerStateStatusEnum::EXITED => {}
+        ContainerStateStatusEnum::RUNNING
+        | ContainerStateStatusEnum::CREATED
+        | ContainerStateStatusEnum::EXITED => {}
         _ => {
             tracing::warn!(name=%c.name, "Container didn't start");
         }
@@ -47,4 +52,20 @@ async fn reconciliate(state: State, id: Uuid) {
         tracing::error!(error=%msg, "Could not add pod runtime to state");
         return;
     }
+}
+
+async fn delete(state: State, id: Uuid) {
+    let Some(pod_runtime) = state.get_pod_runtime(&id) else {
+        return;
+    };
+    let container_ids: Vec<String> = pod_runtime
+        .containers
+        .iter()
+        .map(|(_, c)| c.id.clone())
+        .collect();
+    state.delete_pod_runtime(&id);
+    match state.docker_mgr.stop_pod(&container_ids).await {
+        Ok(()) => {}
+        Err(err) => tracing::error!(error=%err, "Failed to delete pod"),
+    };
 }

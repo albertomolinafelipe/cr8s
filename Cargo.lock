@@ -1635,6 +1635,7 @@ name = "node"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "async-trait",
  "bollard",
  "chrono",
  "dashmap",

@@ -10,15 +10,15 @@ services:
       - r8s-net
 
 
-  r8s-node-1:
+  r8s-node:
     image: r8s-node
-    container_name: r8s-node-1
+    container_name: r8s-node1
     privileged: true
     ports:
       - "7621"
     environment:
         NODE_PORT: 7621
-        NODE_NAME: "r8s-node-1"
+        NODE_NAME: "r8s-node"
         R8S_SERVER_PORT: 7620
         R8S_SERVER_HOST: "r8s-server"
         RUST_LOG: node=trace

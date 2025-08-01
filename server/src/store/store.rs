@@ -12,6 +12,7 @@ pub trait Store: Send + Sync {
     async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError>;
     async fn put_pod(&self, id: &Uuid, pod: &PodObject) -> Result<(), StoreError>;
     async fn list_pods(&self) -> Result<Vec<PodObject>, StoreError>;
+    async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError>;
 
     async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError>;
     async fn put_node(&self, name: &str, node: &Node) -> Result<(), StoreError>;
@@ -46,6 +47,14 @@ impl EtcdStore {
     }
     fn node_key(name: &str) -> String {
         format!("{}{}", Self::NODE_PREFIX, name)
+    }
+
+    async fn delete_object(&self, key: &str) -> Result<(), StoreError> {
+        self.etcd.clone().delete(key, None).await.map_err(|e| {
+            tracing::error!(%key, %e, "Failed to delete key");
+            StoreError::BackendError(e.to_string())
+        })?;
+        Ok(())
     }
 
     async fn get_object<T>(&self, key: &str) -> Result<Option<T>, StoreError>
@@ -133,5 +142,8 @@ impl Store for EtcdStore {
     }
     async fn list_nodes(&self) -> Result<Vec<Node>, StoreError> {
         self.list_objects::<Node>(Self::node_prefix()).await
+    }
+    async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError> {
+        self.delete_object(&Self::pod_key(id)).await
     }
 }

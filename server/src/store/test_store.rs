@@ -38,6 +38,11 @@ impl Store for TestStore {
             .collect())
     }
 
+    async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError> {
+        self.pods.remove(id);
+        Ok(())
+    }
+
     async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError> {
         Ok(self.nodes.get(name).map(|ref_entry| ref_entry.clone()))
     }

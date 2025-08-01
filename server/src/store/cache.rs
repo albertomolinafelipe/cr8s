@@ -1,8 +1,6 @@
 use dashmap::{DashMap, DashSet};
 use uuid::Uuid;
 
-const UNASSIGNED_NODE: &str = "";
-
 struct PodInfo {
     node: String,
     id: Uuid,
@@ -64,6 +62,14 @@ impl CacheManager {
             },
         );
         self.pod_map.entry("".to_string()).or_default().insert(id);
+    }
+
+    pub fn delete_pod(&self, name: &str) {
+        if let Some((_, pod_info)) = self.pod_name_idx.remove(name) {
+            if let Some(set) = self.pod_map.get(&pod_info.node) {
+                set.remove(&pod_info.id);
+            }
+        }
     }
 
     pub fn assign_pod(&self, pod_name: &str, pod_id: &Uuid, node_name: &str) {
