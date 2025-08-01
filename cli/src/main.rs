@@ -1,5 +1,12 @@
 use clap::{Parser, Subcommand};
 
+use crate::commands::{
+    create::{CreateArgs, handle_create},
+    delete::{DeleteArgs, handle_delete},
+    get::{GetArgs, handle_get},
+    logs::{LogArgs, handle_logs},
+};
+
 mod commands;
 mod config;
 
@@ -14,11 +21,13 @@ struct R8sCtl {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Retrieve cluster resources
-    Get(commands::get::GetArgs),
+    Get(GetArgs),
     /// Create or update resources from a configuration file
-    Create(commands::create::CreateArgs),
+    Create(CreateArgs),
     /// Delete deployed resources
-    Delete(commands::delete::DeleteArgs),
+    Delete(DeleteArgs),
+    /// Display the logs for a resource
+    Logs(LogArgs),
 }
 
 fn main() {
@@ -26,8 +35,9 @@ fn main() {
     let config = config::load_config();
 
     match cli.command {
-        Commands::Get(args) => commands::get::handle(&config, &args),
-        Commands::Create(args) => commands::create::handle(&config, &args),
-        Commands::Delete(args) => commands::delete::handle(&config, &args),
-    }
+        Commands::Get(args) => handle_get(&config, &args),
+        Commands::Create(args) => handle_create(&config, &args),
+        Commands::Delete(args) => handle_delete(&config, &args),
+        Commands::Logs(args) => handle_logs(&config, &args),
+    };
 }

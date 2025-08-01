@@ -8,11 +8,14 @@ docker_image_node   := r8s-node
 
 all: build docker
 
+build-cli:
+	cargo build -p cli --release
+	cp target/release/r8sctl .
+
 build-%:
 	cargo build -p $* --release
 
-build: build-server build-node build-cli
-	cp target/release/r8sctl .
+build: build-cli build-server build-node
 
 docker: docker-server docker-node
 

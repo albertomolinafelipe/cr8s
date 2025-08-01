@@ -1,9 +1,10 @@
 use dashmap::{DashMap, DashSet};
 use uuid::Uuid;
 
-struct PodInfo {
-    node: String,
-    id: Uuid,
+#[derive(Clone)]
+pub struct PodInfo {
+    pub node: String,
+    pub id: Uuid,
 }
 
 pub struct CacheManager {
@@ -47,6 +48,10 @@ impl CacheManager {
 
     pub fn get_pod_id(&self, name: &str) -> Option<Uuid> {
         self.pod_name_idx.get(name).map(|s| s.id)
+    }
+
+    pub fn get_pod_info(&self, name: &str) -> Option<PodInfo> {
+        self.pod_name_idx.get(name).map(|entry| entry.clone())
     }
 
     pub fn get_pod_ids(&self, node_name: &str) -> Option<DashSet<Uuid>> {

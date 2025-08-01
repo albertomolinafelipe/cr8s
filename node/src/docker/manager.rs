@@ -5,12 +5,17 @@ use crate::{
 use async_trait::async_trait;
 use bollard::{
     Docker,
-    container::{Config, CreateContainerOptions, InspectContainerOptions, StartContainerOptions},
+    container::{
+        Config, CreateContainerOptions, InspectContainerOptions, LogOutput, LogsOptions,
+        StartContainerOptions,
+    },
     image::CreateImageOptions,
     secret::ContainerStateStatusEnum,
 };
+use bytes::Bytes;
 use dashmap::DashSet;
-use futures_util::stream::TryStreamExt;
+use futures_util::StreamExt;
+use futures_util::stream::{BoxStream, TryStreamExt};
 use shared::models::PodObject;
 use std::collections::HashMap;
 
@@ -22,6 +27,11 @@ pub trait DockerClient: Send + Sync {
     ) -> Result<ContainerStateStatusEnum, DockerError>;
     async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError>;
     async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError>;
+    async fn get_logs(&self, container_id: &str) -> Result<String, DockerError>;
+    async fn stream_logs(
+        &self,
+        id: &str,
+    ) -> Result<BoxStream<'static, Result<bytes::Bytes, DockerError>>, DockerError>;
 }
 
 #[derive(Debug)]
@@ -53,7 +63,34 @@ impl DockerManager {
         self.images.insert(image);
     }
 
-    pub async fn get_container_status(
+    async fn ensure_image(&self, docker: &Docker, image: &str) -> Result<(), DockerError> {
+        if self.has_image(image) {
+            return Ok(());
+        }
+
+        let options = Some(CreateImageOptions {
+            from_image: image,
+            ..Default::default()
+        });
+
+        let mut stream = docker.create_image(options, None, None);
+
+        while let Some(_status) = stream
+            .try_next()
+            .await
+            .map_err(|e| DockerError::ImagePullError(e.to_string()))?
+        {}
+
+        tracing::info!(image=%image, "Pulled container");
+        self.mark_image_as_pulled(image.to_string());
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl DockerClient for DockerManager {
+    async fn get_container_status(
         &self,
         id: &String,
     ) -> Result<ContainerStateStatusEnum, DockerError> {
@@ -68,8 +105,7 @@ impl DockerManager {
             .and_then(|s| s.status.clone())
             .unwrap_or_else(|| ContainerStateStatusEnum::EMPTY))
     }
-
-    pub async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
+    async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
         let docker = self.client();
         let mut container_runtimes = HashMap::new();
 
@@ -145,8 +181,7 @@ impl DockerManager {
             containers: container_runtimes,
         })
     }
-
-    pub async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError> {
+    async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError> {
         let docker = self.client();
 
         for cid in container_ids {
@@ -165,45 +200,73 @@ impl DockerManager {
 
         Ok(())
     }
+    async fn get_logs(&self, container_id: &str) -> Result<String, DockerError> {
+        let docker = self.client();
+        let mut logs_stream = docker.logs(
+            container_id,
+            Some(LogsOptions {
+                stdout: true,
+                stderr: true,
+                follow: false,
+                tail: "all",
+                ..Default::default()
+            }),
+        );
 
-    async fn ensure_image(&self, docker: &Docker, image: &str) -> Result<(), DockerError> {
-        if self.has_image(image) {
-            return Ok(());
-        }
-
-        let options = Some(CreateImageOptions {
-            from_image: image,
-            ..Default::default()
-        });
-
-        let mut stream = docker.create_image(options, None, None);
-
-        while let Some(_status) = stream
+        let mut output = String::new();
+        while let Some(chunk) = logs_stream
             .try_next()
             .await
-            .map_err(|e| DockerError::ImagePullError(e.to_string()))?
-        {}
+            .map_err(|e| DockerError::LogsError(e.to_string()))?
+        {
+            match chunk {
+                LogOutput::StdOut { message }
+                | LogOutput::StdErr { message }
+                | LogOutput::Console { message } => {
+                    output.push_str(&String::from_utf8_lossy(&message));
+                }
+                _ => {}
+            }
+        }
 
-        tracing::info!(image=%image, "Pulled container");
-        self.mark_image_as_pulled(image.to_string());
-
-        Ok(())
+        Ok(output)
     }
-}
-
-#[async_trait]
-impl DockerClient for DockerManager {
-    async fn get_container_status(
+    async fn stream_logs(
         &self,
-        id: &String,
-    ) -> Result<ContainerStateStatusEnum, DockerError> {
-        self.get_container_status(id).await
-    }
-    async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
-        self.start_pod(pod).await
-    }
-    async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError> {
-        self.stop_pod(container_ids).await
+        id: &str,
+    ) -> Result<BoxStream<'static, Result<Bytes, DockerError>>, DockerError> {
+        let docker = self.client();
+
+        let mut logs_stream = docker.logs(
+            id,
+            Some(LogsOptions {
+                follow: true,
+                stdout: true,
+                stderr: true,
+                timestamps: false,
+                tail: "all".to_string(),
+                since: 0,
+                ..Default::default()
+            }),
+        );
+
+        let stream = async_stream::stream! {
+            while let Some(item) = logs_stream.next().await {
+                match item {
+                    Ok(LogOutput::StdOut { message })
+                        | Ok(LogOutput::StdErr { message })
+                        | Ok(LogOutput::Console { message }) => {
+                            yield Ok(message);
+                        }
+                    Ok(_) => continue,
+                    Err(e) => {
+                        yield Err(DockerError::StreamLogsError(e.to_string()));
+                        break;
+                    }
+                }
+            }
+        };
+        Ok(Box::pin(stream))
     }
 }
 

@@ -16,7 +16,7 @@ pub struct CreateArgs {
 }
 
 #[tokio::main]
-pub async fn handle(config: &Config, args: &CreateArgs) {
+pub async fn handle_create(config: &Config, args: &CreateArgs) {
     let content = match fs::read_to_string(&args.file).await {
         Ok(c) => c,
         Err(e) => {

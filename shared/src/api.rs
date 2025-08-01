@@ -16,6 +16,12 @@ pub struct PodQueryParams {
     pub watch: Option<bool>,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct LogsQuery {
+    pub container: Option<String>,
+    pub follow: Option<bool>,
+}
+
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CreateResponse {
     pub id: Uuid,

@@ -12,7 +12,7 @@ pub struct GetArgs {
 }
 
 #[tokio::main]
-pub async fn handle(config: &Config, args: &GetArgs) {
+pub async fn handle_get(config: &Config, args: &GetArgs) {
     let url = format!("{}/{}", &config.url, args.resource);
 
     let response = reqwest::get(&url).await;

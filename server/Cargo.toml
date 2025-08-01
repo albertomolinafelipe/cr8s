@@ -22,6 +22,7 @@ rand = "0.9.1"
 # Datatypes
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.17.0", features = ["serde", "v4"]}
+bytes = "1.10.1"
 # Storage
 etcd-client = "0.15"
 # Concurrent hashmap

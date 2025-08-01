@@ -1,11 +1,10 @@
 use crate::State;
-use actix_web::{
-    HttpResponse, Responder,
-    web::{self, Bytes},
-};
+use actix_web::{HttpResponse, Responder, web};
+use bytes::Bytes;
+use futures_util::StreamExt;
 use shared::api::{
-    CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodQueryParams,
-    PodStatusUpdate,
+    CreateResponse, EventType, LogsQuery, PodEvent, PodField, PodManifest, PodPatch,
+    PodQueryParams, PodStatusUpdate,
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -13,6 +12,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .route("/{pod_name}", web::patch().to(update))
         .route("/{pod_name}", web::delete().to(delete))
         .route("/{pod_name}/status", web::patch().to(status))
+        .route("/{pod_name}/logs", web::get().to(logs))
         .route("", web::post().to(create));
 }
 
@@ -194,6 +194,83 @@ async fn delete(state: State, path_string: web::Path<String>) -> impl Responder 
     }
 }
 
+/// Display the logs of a pod routing the request to the assigned node
+async fn logs(
+    state: State,
+    path_string: web::Path<String>,
+    query: web::Query<LogsQuery>,
+) -> impl Responder {
+    let pod_name = path_string.into_inner();
+    let follow = query.follow.unwrap_or(false);
+
+    let Some(pod_info) = state.cache.get_pod_info(&pod_name) else {
+        return HttpResponse::NotFound().body("Pod not found in server cache");
+    };
+
+    let node_name = pod_info.node;
+
+    let node = match state.get_node(&node_name).await {
+        Ok(Some(node)) => node,
+        Ok(_) => {
+            tracing::error!(%pod_name, %node_name, "Node assignment not found in store");
+            return HttpResponse::InternalServerError().finish();
+        }
+        Err(err) => {
+            tracing::warn!(error=%err, "Failed to get node");
+            return err.to_http_response();
+        }
+    };
+
+    let Ok(socket_addr) = node.addr.parse::<std::net::SocketAddr>() else {
+        tracing::error!(addr = %node.addr, "Invalid node address format");
+        return HttpResponse::InternalServerError().finish();
+    };
+
+    let port = socket_addr.port();
+    let host = format!("http://{}:{}", node_name, port);
+    let mut url = format!("{}/pods/{}/logs", host, pod_info.id);
+
+    let mut query_params = vec![];
+    if let Some(container) = &query.container {
+        query_params.push(format!("container={}", container));
+    }
+    if follow {
+        query_params.push("follow=true".to_string());
+    }
+    if !query_params.is_empty() {
+        url = format!("{}?{}", url, query_params.join("&"));
+    }
+
+    // Forward the request to the node
+    match reqwest::Client::new().get(&url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+
+            if follow {
+                let stream = resp.bytes_stream().map(|chunk| match chunk {
+                    Ok(bytes) => Ok::<Bytes, actix_web::Error>(bytes),
+                    Err(err) => {
+                        tracing::error!("Stream error from node: {}", err);
+                        Err(actix_web::error::ErrorInternalServerError("stream error"))
+                    }
+                });
+
+                HttpResponse::build(actix_web::http::StatusCode::from_u16(status.as_u16()).unwrap())
+                    .content_type("text/plain")
+                    .streaming(stream)
+            } else {
+                let body = resp.bytes().await.unwrap_or_default();
+                HttpResponse::build(actix_web::http::StatusCode::from_u16(status.as_u16()).unwrap())
+                    .body(body)
+            }
+        }
+        Err(err) => {
+            tracing::error!(%err, "Failed to fetch logs from node");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::endpoints::helpers::collect_stream_events;
@@ -223,6 +300,7 @@ mod tests {
                 .route("/pods/{pod_name}", web::patch().to(update))
                 .route("/pods/{pod_name}", web::delete().to(delete))
                 .route("/pods/{pod_name}/status", web::patch().to(status))
+                .route("/{pod_name}/logs", web::get().to(logs))
                 .route("/pods", web::post().to(create)),
         )
         .await

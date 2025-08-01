@@ -211,6 +211,10 @@ impl R8s {
         self.store.list_nodes().await.unwrap_or_default()
     }
 
+    pub async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError> {
+        self.store.get_node(name).await
+    }
+
     pub async fn update_node_heartbeat(&self, node_name: &str) -> Result<(), StoreError> {
         let mut node = self
             .store
