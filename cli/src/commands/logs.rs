@@ -1,5 +1,6 @@
 use crate::config::Config;
 use clap::Parser;
+use reqwest::StatusCode;
 
 #[derive(Parser, Debug)]
 pub struct LogArgs {
@@ -30,20 +31,14 @@ pub async fn handle_logs(config: &Config, args: &LogArgs) {
         url = format!("{}?{}", url, query.join("&"));
     }
     match reqwest::Client::new().get(&url).send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            match resp.text().await {
-                Ok(body) => {
-                    eprintln!("Response status: {}", status);
-                    eprintln!("Response body:\n{}", body);
-                }
-                Err(err) => {
-                    eprintln!("Failed to read response body: {}", err);
-                }
-            }
-        }
-        Err(err) => {
-            eprintln!("Request error: {}", err);
-        }
+        Ok(resp) => match resp.status() {
+            StatusCode::OK | StatusCode::NOT_FOUND => match resp.text().await {
+                Ok(body) => println!("{}", body),
+                Err(err) => eprintln!("Failed to read response body: {}", err),
+            },
+            StatusCode::BAD_REQUEST => eprintln!("Multicontainer pods require container flag"),
+            _ => {}
+        },
+        _ => {}
     }
 }
