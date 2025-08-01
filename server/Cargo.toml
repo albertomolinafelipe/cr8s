@@ -2,6 +2,7 @@
 name = "server"
 version = "0.1.0"
 edition = "2024"
+description = "Control plane component, apiserver, scheduler and drift controller"
 
 [dependencies]
 shared = { path = "../shared"}
