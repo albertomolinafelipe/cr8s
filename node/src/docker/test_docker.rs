@@ -103,4 +103,8 @@ impl DockerClient for TestDocker {
 
         Ok(())
     }
+
+    async fn get_logs(&self, container_id: &str) -> Result<String, DockerError> {
+        Ok("Here, your logs".to_string())
+    }
 }

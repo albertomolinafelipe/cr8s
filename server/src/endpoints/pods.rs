@@ -3,9 +3,9 @@ use actix_web::{
     HttpResponse, Responder,
     web::{self, Bytes},
 };
-use serde::Deserialize;
 use shared::api::{
-    CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodStatusUpdate,
+    CreateResponse, EventType, LogsQuery, PodEvent, PodField, PodManifest, PodPatch,
+    PodQueryParams, PodStatusUpdate,
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -15,13 +15,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .route("/{pod_name}/status", web::patch().to(status))
         .route("/{pod_name}/logs", web::get().to(logs))
         .route("", web::post().to(create));
-}
-
-#[derive(Deserialize, Debug)]
-pub struct PodQueryParams {
-    #[serde(rename = "nodeName")]
-    pub node_name: Option<String>,
-    pub watch: Option<bool>,
 }
 
 /// List, fetch and search pods
@@ -202,25 +195,68 @@ async fn delete(state: State, path_string: web::Path<String>) -> impl Responder 
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct LogsQuery {
-    container: Option<String>,
-    follow: Option<bool>,
-}
-
+/// Display the logs of a pod routing the request to the assigned node
 async fn logs(
-    _state: State,
+    state: State,
     path_string: web::Path<String>,
     query: web::Query<LogsQuery>,
 ) -> impl Responder {
     let pod_name = path_string.into_inner();
     let follow = query.follow.unwrap_or(false);
-    tracing::trace!(
-        %pod_name,
-        %follow,
-        container=%query.container.clone().unwrap_or("None".to_string()),
-        "Get pod logs");
-    HttpResponse::NotImplemented().finish()
+
+    if follow {
+        return HttpResponse::NotImplemented().finish();
+    };
+
+    let Some(pod_info) = state.cache.get_pod_info(&pod_name) else {
+        return HttpResponse::NotFound().body("Pod not found in server cache");
+    };
+    let pod_id = pod_info.id;
+    let node_name = pod_info.node;
+
+    let node = match state.get_node(&node_name).await {
+        Ok(Some(node)) => node,
+        Ok(_) => {
+            tracing::error!(%pod_name, %node_name, "Node assignment not found in store");
+            return HttpResponse::InternalServerError().finish();
+        }
+        Err(err) => {
+            tracing::warn!(
+                error=%err,
+                "Failed to get node"
+            );
+            return err.to_http_response();
+        }
+    };
+    let Ok(socket_addr) = node.addr.parse::<std::net::SocketAddr>() else {
+        tracing::error!(addr = %node.addr, "Invalid node address format");
+        return HttpResponse::InternalServerError().finish();
+    };
+
+    let port = socket_addr.port();
+    let host = format!("http://{}:{}", node_name, port);
+    let mut url = format!("{}/pods/{}/logs", host, pod_id);
+
+    let mut query_params = vec![];
+    if let Some(container) = &query.container {
+        query_params.push(format!("container={}", container));
+    }
+    if !query_params.is_empty() {
+        url = format!("{}?{}", url, query_params.join("&"));
+    }
+    // Forward the request to the node
+    match reqwest::Client::new().get(&url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.bytes().await.unwrap_or_default();
+            HttpResponse::build(actix_web::http::StatusCode::from_u16(status.as_u16()).unwrap())
+                .body(body)
+        }
+        Err(err) => {
+            tracing::error!(%err, "Failed to fetch logs from node");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }
 
 #[cfg(test)]

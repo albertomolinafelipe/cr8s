@@ -1,6 +1,7 @@
 use std::fmt;
 
 pub mod manager;
+#[cfg(test)]
 pub mod test_docker;
 
 #[derive(Debug)]
@@ -12,6 +13,7 @@ pub enum DockerError {
     ContainerInspectError(String),
     ContainerRemovalError(String),
     ContainerStopError(String),
+    ContainerLogsError(String),
 }
 
 impl fmt::Display for DockerError {
@@ -30,6 +32,7 @@ impl fmt::Display for DockerError {
             DockerError::ContainerInspectError(msg) => {
                 write!(f, "Container inspect error: {}", msg)
             }
+            DockerError::ContainerLogsError(msg) => write!(f, "Container logs error: {}", msg),
         }
     }
 }

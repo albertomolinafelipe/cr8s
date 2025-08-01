@@ -1,6 +1,5 @@
 use crate::config::Config;
 use clap::Parser;
-use reqwest::StatusCode;
 
 #[derive(Parser, Debug)]
 pub struct LogArgs {
@@ -30,19 +29,19 @@ pub async fn handle_logs(config: &Config, args: &LogArgs) {
     if !query.is_empty() {
         url = format!("{}?{}", url, query.join("&"));
     }
-
     match reqwest::Client::new().get(&url).send().await {
-        Ok(resp) => match resp.status() {
-            StatusCode::OK => eprintln!("Not implemented"),
-            StatusCode::NOT_FOUND => match &args.container {
-                Some(container) => eprintln!(
-                    "Container '{}' on pod '{}' not found",
-                    container, args.pod_name
-                ),
-                None => eprintln!("Pod '{}' not found", args.pod_name),
-            },
-            _ => eprintln!("Error fetching logs: {}", resp.status()),
-        },
+        Ok(resp) => {
+            let status = resp.status();
+            match resp.text().await {
+                Ok(body) => {
+                    eprintln!("Response status: {}", status);
+                    eprintln!("Response body:\n{}", body);
+                }
+                Err(err) => {
+                    eprintln!("Failed to read response body: {}", err);
+                }
+            }
+        }
         Err(err) => {
             eprintln!("Request error: {}", err);
         }
