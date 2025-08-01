@@ -3,7 +3,7 @@ use actix_web::{HttpResponse, Responder, web};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use shared::api::{
-    CreateResponse, EventType, LogsQuery, PodEvent, PodField, PodManifest, PodPatch,
+    CreateResponse, EventType, LogsQueryParams, PodEvent, PodField, PodManifest, PodPatch,
     PodQueryParams, PodStatusUpdate,
 };
 
@@ -198,7 +198,7 @@ async fn delete(state: State, path_string: web::Path<String>) -> impl Responder 
 async fn logs(
     state: State,
     path_string: web::Path<String>,
-    query: web::Query<LogsQuery>,
+    query: web::Query<LogsQueryParams>,
 ) -> impl Responder {
     let pod_name = path_string.into_inner();
     let follow = query.follow.unwrap_or(false);

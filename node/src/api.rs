@@ -2,7 +2,7 @@ use crate::state::State;
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use bytes::Bytes;
 use futures_util::StreamExt;
-use shared::api::LogsQuery;
+use shared::api::LogsQueryParams;
 use uuid::Uuid;
 
 pub async fn run(state: State) -> Result<(), String> {
@@ -31,7 +31,7 @@ async fn root() -> impl Responder {
 async fn pod_logs(
     state: State,
     path_string: web::Path<Uuid>,
-    query: web::Query<LogsQuery>,
+    query: web::Query<LogsQueryParams>,
 ) -> impl Responder {
     let pod_id = path_string.into_inner();
     let follow = query.follow.unwrap_or(false);

@@ -1,3 +1,6 @@
+//! Shared view logic for formatting models (Node, PodObject) into table displays.
+//! Includes `Tabled` implementations and status formatting helpers.
+
 use std::borrow::Cow;
 
 use chrono::Utc;
@@ -5,6 +8,9 @@ use tabled::Tabled;
 
 use crate::models::{Node, NodeStatus, PodObject, PodStatus};
 
+// --- Display impls for status enums ---
+
+/// String representation of `NodeStatus` for table output.
 impl std::fmt::Display for NodeStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -14,6 +20,7 @@ impl std::fmt::Display for NodeStatus {
     }
 }
 
+/// String representation of `PodStatus` for table output.
 impl std::fmt::Display for PodStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -26,6 +33,9 @@ impl std::fmt::Display for PodStatus {
     }
 }
 
+// --- Table display for Node ---
+
+/// Implements `Tabled` for `Node`, enabling CLI tabular display.
 impl Tabled for Node {
     const LENGTH: usize = 5;
 
@@ -53,11 +63,14 @@ impl Tabled for Node {
     }
 }
 
+// --- Table display for PodObject ---
+
+/// Implements `Tabled` for `PodObject`, enabling CLI tabular display.
 impl Tabled for PodObject {
     const LENGTH: usize = 5;
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
-        // Allowed statuses (good statuses)
+        // Only count containers considered "ready" by allowed status strings.
         let good_statuses = [
             // "empty",
             "created",
@@ -105,6 +118,9 @@ impl Tabled for PodObject {
     }
 }
 
+// --- Utility functions ---
+
+/// Converts a `Duration` into a human-readable age string like `5m ago`, `2h ago`, etc.
 fn human_duration(dur: std::time::Duration) -> String {
     let secs = dur.as_secs();
     match secs {
