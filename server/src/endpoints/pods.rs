@@ -3,9 +3,9 @@ use actix_web::{
     HttpResponse, Responder,
     web::{self, Bytes},
 };
+use serde::Deserialize;
 use shared::api::{
-    CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodQueryParams,
-    PodStatusUpdate,
+    CreateResponse, EventType, PodEvent, PodField, PodManifest, PodPatch, PodStatusUpdate,
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -13,7 +13,15 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .route("/{pod_name}", web::patch().to(update))
         .route("/{pod_name}", web::delete().to(delete))
         .route("/{pod_name}/status", web::patch().to(status))
+        .route("/{pod_name}/logs", web::get().to(logs))
         .route("", web::post().to(create));
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PodQueryParams {
+    #[serde(rename = "nodeName")]
+    pub node_name: Option<String>,
+    pub watch: Option<bool>,
 }
 
 /// List, fetch and search pods
@@ -194,6 +202,27 @@ async fn delete(state: State, path_string: web::Path<String>) -> impl Responder 
     }
 }
 
+#[derive(Deserialize, Debug)]
+struct LogsQuery {
+    container: Option<String>,
+    follow: Option<bool>,
+}
+
+async fn logs(
+    _state: State,
+    path_string: web::Path<String>,
+    query: web::Query<LogsQuery>,
+) -> impl Responder {
+    let pod_name = path_string.into_inner();
+    let follow = query.follow.unwrap_or(false);
+    tracing::trace!(
+        %pod_name,
+        %follow,
+        container=%query.container.clone().unwrap_or("None".to_string()),
+        "Get pod logs");
+    HttpResponse::NotImplemented().finish()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::endpoints::helpers::collect_stream_events;
@@ -223,6 +252,7 @@ mod tests {
                 .route("/pods/{pod_name}", web::patch().to(update))
                 .route("/pods/{pod_name}", web::delete().to(delete))
                 .route("/pods/{pod_name}/status", web::patch().to(status))
+                .route("/{pod_name}/logs", web::get().to(logs))
                 .route("/pods", web::post().to(create)),
         )
         .await
