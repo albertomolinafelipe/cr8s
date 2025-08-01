@@ -78,6 +78,26 @@ impl R8s {
         Ok(pod.id)
     }
 
+    pub async fn delete_pod(&self, name: &str) -> Result<(), StoreError> {
+        let id = self
+            .cache
+            .get_pod_id(name)
+            .ok_or_else(|| StoreError::NotFound("Pod not found".to_string()))?;
+        let pod = self
+            .store
+            .get_pod(id)
+            .await?
+            .ok_or_else(|| StoreError::NotFound("Pod not found".to_string()))?;
+        self.store.delete_pod(&id).await?;
+        self.cache.delete_pod(name);
+        let event = PodEvent {
+            event_type: EventType::Deleted,
+            pod: pod,
+        };
+        let _ = self.pod_tx.send(event);
+        Ok(())
+    }
+
     pub async fn assign_pod(&self, name: &str, node_name: String) -> Result<(), StoreError> {
         // Check node name exists
         (self.cache.node_name_exists(&node_name))
@@ -176,6 +196,7 @@ impl R8s {
             .then_some(())
             .ok_or_else(|| StoreError::Conflict("Duplicate node name or address".to_string()))?;
 
+        self.store.put_node(&node.name, node).await?;
         self.cache.add_node(&node.name, &node.addr);
 
         let event = NodeEvent {
@@ -195,7 +216,10 @@ impl R8s {
             .store
             .get_node(node_name)
             .await?
-            .ok_or(StoreError::NotFound("Node not found in store".to_string()))?;
+            .ok_or(StoreError::NotFound(format!(
+                "Node {} not found in store",
+                node_name
+            )))?;
 
         node.last_heartbeat = Utc::now();
         self.store.put_node(node_name, &node).await

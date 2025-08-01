@@ -17,6 +17,8 @@ enum Commands {
     Get(commands::get::GetArgs),
     /// Create or update resources from a configuration file
     Create(commands::create::CreateArgs),
+    /// Delete deployed resources
+    Delete(commands::delete::DeleteArgs),
 }
 
 fn main() {
@@ -26,5 +28,6 @@ fn main() {
     match cli.command {
         Commands::Get(args) => commands::get::handle(&config, &args),
         Commands::Create(args) => commands::create::handle(&config, &args),
+        Commands::Delete(args) => commands::delete::handle(&config, &args),
     }
 }

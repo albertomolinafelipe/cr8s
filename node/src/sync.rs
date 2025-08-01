@@ -13,7 +13,7 @@ pub async fn run(state: State) -> Result<(), String> {
     loop {
         interval.tick().await;
         let client = Client::new();
-        for p in state.pod_runtimes.iter() {
+        for p in state.list_pod_runtimes().iter() {
             let mut container_statuses: Vec<(String, String)> = Vec::new();
             // Over simplification obv
             let mut pod_status = PodStatus::Running;
@@ -44,7 +44,7 @@ pub async fn run(state: State) -> Result<(), String> {
                 .await;
 
             match response {
-                Ok(resp) => tracing::debug!(response=%resp.status(), "Status update sent"),
+                Ok(resp) => tracing::trace!(response=%resp.status(), "Status update sent"),
                 Err(err) => tracing::warn!(error=%err, "Status update failed"),
             }
         }

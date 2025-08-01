@@ -1,6 +1,6 @@
 use actix_web::web;
 use bollard::secret::ContainerStateStatusEnum;
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use shared::models::PodObject;
 use std::collections::HashMap;
@@ -8,7 +8,7 @@ use std::env;
 use std::sync::RwLock;
 use uuid::Uuid;
 
-use crate::docker::DockerManager;
+use crate::docker::manager::{DockerClient, DockerManager};
 
 pub type State = web::Data<NodeState>;
 
@@ -27,32 +27,31 @@ pub struct ContainerRuntime {
     pub status: ContainerStateStatusEnum,
 }
 
-#[derive(Debug)]
 pub struct NodeState {
     pub config: Config,
-    pub docker_mgr: DockerManager,
+    pub docker_mgr: Box<dyn DockerClient + Send + Sync>,
     node_name: RwLock<String>,
     pods: DashMap<Uuid, PodObject>,
-    pub pod_runtimes: DashMap<Uuid, PodRuntime>,
-    pod_names: DashSet<String>,
+    pod_runtimes: DashMap<Uuid, PodRuntime>,
 }
 
 impl NodeState {
     pub fn new() -> Self {
-        let docker_mgr = DockerManager::start()
-            .inspect_err(|err| {
-                tracing::error!(
+        let docker_mgr = Box::new(
+            DockerManager::start()
+                .inspect_err(|err| {
+                    tracing::error!(
                     error=%err,
                     "Failed to start docker manager")
-            })
-            .expect("");
+                })
+                .expect(""),
+        );
         Self {
             config: load_config(),
             docker_mgr,
             node_name: RwLock::new(String::new()),
             pods: DashMap::new(),
             pod_runtimes: DashMap::new(),
-            pod_names: DashSet::new(),
         }
     }
 
@@ -72,6 +71,13 @@ impl NodeState {
         self.pod_runtimes.get(id).map(|r| r.clone())
     }
 
+    pub fn list_pod_runtimes(&self) -> Vec<PodRuntime> {
+        self.pod_runtimes
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
+    }
+
     pub fn get_pod_names(&self) -> Vec<String> {
         self.pods
             .iter()
@@ -79,22 +85,15 @@ impl NodeState {
             .collect()
     }
 
-    pub fn add_pod(&self, pod: &PodObject) -> Result<(), String> {
-        if self.pods.contains_key(&pod.id) {
-            return Err(format!("Pod with ID '{}' already exists.", pod.id));
-        }
-
-        if self.pod_names.contains(&pod.metadata.user.name) {
-            return Err(format!(
-                "Pod with name '{}' already exists.",
-                pod.metadata.user.name
-            ));
-        }
-
+    pub fn put_pod(&self, pod: &PodObject) {
         self.pods.insert(pod.id, pod.clone());
-        self.pod_names.insert(pod.metadata.user.name.clone());
+    }
 
-        Ok(())
+    pub fn delete_pod(&self, id: &Uuid) {
+        self.pods.remove(id);
+    }
+    pub fn delete_pod_runtime(&self, id: &Uuid) {
+        self.pod_runtimes.remove(id);
     }
 
     pub fn add_pod_runtime(&self, pod_runtime: PodRuntime) -> Result<(), String> {
@@ -135,7 +134,7 @@ fn load_config() -> Config {
     let sync_loop = env::var("SYNC_LOOP_INTERVAL")
         .ok()
         .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(10);
+        .unwrap_or(15);
 
     let name = env::var("NODE_NAME").unwrap_or_else(|_| format!("worker-node-{}", port));
 

@@ -1,3 +1,4 @@
+use crate::WorkRequest;
 use crate::state::State;
 use futures_util::TryStreamExt;
 use reqwest::Client;
@@ -9,9 +10,8 @@ use tokio::{
 };
 
 use tokio_util::io::StreamReader;
-use uuid::Uuid;
 
-pub async fn run(state: State, tx: Sender<Uuid>) -> Result<(), String> {
+pub async fn run(state: State, tx: Sender<WorkRequest>) -> Result<(), String> {
     register(state.clone()).await?;
     println!("r8s-node ready");
     tracing::debug!("Starting assignment controller");
@@ -20,7 +20,7 @@ pub async fn run(state: State, tx: Sender<Uuid>) -> Result<(), String> {
     Ok(())
 }
 
-async fn watch(state: State, tx: &Sender<Uuid>) -> Result<(), String> {
+async fn watch(state: State, tx: &Sender<WorkRequest>) -> Result<(), String> {
     let client = Client::new();
 
     let url = format!(
@@ -96,17 +96,20 @@ async fn register(state: State) -> Result<(), String> {
     Err("Failed to register".to_string())
 }
 
-async fn handle_event(state: State, event: PodEvent, tx: &Sender<Uuid>) {
+async fn handle_event(state: State, event: PodEvent, tx: &Sender<WorkRequest>) {
+    let req = WorkRequest {
+        id: event.pod.id,
+        event: event.event_type.clone(),
+    };
     match event.event_type {
-        EventType::Modified => {
-            if let Err(e) = state.add_pod(&event.pod) {
-                tracing::error!("Couldn't add pod: {}", e);
-            } else if let Err(e) = tx.send(event.pod.id).await {
-                tracing::error!("Couldn't enqueue pod: {}", e);
-            }
-        }
+        EventType::Modified => state.put_pod(&event.pod),
+        EventType::Deleted => state.delete_pod(&event.pod.id),
         _ => {
-            tracing::warn!("Unhandled event type: {:?}", event.event_type);
+            tracing::error!("Unhandled event type: {:?}", event.event_type);
+            return;
         }
+    }
+    if let Err(e) = tx.send(req).await {
+        tracing::error!("Couldn't enqueue pod: {}", e);
     }
 }

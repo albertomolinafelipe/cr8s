@@ -11,6 +11,7 @@ use shared::api::{
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(get))
         .route("/{pod_name}", web::patch().to(update))
+        .route("/{pod_name}", web::delete().to(delete))
         .route("/{pod_name}/status", web::patch().to(status))
         .route("", web::post().to(create));
 }
@@ -172,6 +173,27 @@ async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
     }
 }
 
+/// Delete pod by name
+async fn delete(state: State, path_string: web::Path<String>) -> impl Responder {
+    let pod_name = path_string.into_inner();
+    match state.delete_pod(&pod_name).await {
+        Ok(_) => {
+            tracing::info!(
+                name=%pod_name,
+                "Pod deleted"
+            );
+            HttpResponse::NoContent().finish()
+        }
+        Err(err) => {
+            tracing::warn!(
+                error=%err,
+                "Could not delete pod"
+            );
+            err.to_http_response()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::endpoints::helpers::collect_stream_events;
@@ -199,6 +221,7 @@ mod tests {
                 .app_data(state.clone())
                 .route("/pods", web::get().to(get))
                 .route("/pods/{pod_name}", web::patch().to(update))
+                .route("/pods/{pod_name}", web::delete().to(delete))
                 .route("/pods/{pod_name}/status", web::patch().to(status))
                 .route("/pods", web::post().to(create)),
         )
@@ -245,6 +268,10 @@ mod tests {
     ///  - test_create_pod
     ///  - test_create_pod_repeat_name
     ///  - test_create_pod_repeat_container_names
+    ///
+    ///  DELETE
+    ///  - test_delete_pod
+    ///  - test_delete_not_found
     ///
 
     #[actix_web::test]
@@ -521,5 +548,36 @@ mod tests {
             .to_request();
         let res = call_service(&app, req).await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[actix_web::test]
+    async fn test_delete_pod() {
+        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let pod_name = add_pod(&state).await;
+
+        let app = pod_service(&state).await;
+
+        let req = TestRequest::delete()
+            .uri(&format!("/pods/{}", pod_name))
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        let req = TestRequest::get().uri("/pods").to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let pods: Vec<PodObject> = read_body_json(resp).await;
+        assert_eq!(pods.len(), 0, "There should be no pods");
+    }
+
+    #[actix_web::test]
+    async fn test_delete_pod_not_found() {
+        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let app = pod_service(&state).await;
+
+        let req = TestRequest::delete().uri("/pods/made-up").to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }

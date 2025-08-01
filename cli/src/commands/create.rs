@@ -42,20 +42,13 @@ pub async fn handle(config: &Config, args: &CreateArgs) {
         let url = format!("{}/{}s", config.url, object.spec);
         let manifest = object.spec.into_manifest(object.metadata);
 
-        let res = match client.post(&url).json(&manifest).send().await {
+        match client.post(&url).json(&manifest).send().await {
             Ok(resp) => resp,
             Err(e) => {
                 eprintln!("Failed to send request to {}: {}", url, e);
                 continue;
             }
         };
-
-        println!(
-            "Response({}): {} {}",
-            url,
-            res.status(),
-            res.text().await.unwrap_or_default()
-        );
     }
 }
 

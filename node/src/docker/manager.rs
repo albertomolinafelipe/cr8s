@@ -1,4 +1,8 @@
-use crate::state::{ContainerRuntime, PodRuntime};
+use crate::{
+    docker::DockerError,
+    state::{ContainerRuntime, PodRuntime},
+};
+use async_trait::async_trait;
 use bollard::{
     Docker,
     container::{Config, CreateContainerOptions, InspectContainerOptions, StartContainerOptions},
@@ -8,31 +12,16 @@ use bollard::{
 use dashmap::DashSet;
 use futures_util::stream::TryStreamExt;
 use shared::models::PodObject;
-use std::{collections::HashMap, fmt};
+use std::collections::HashMap;
 
-#[derive(Debug)]
-pub enum DockerError {
-    ConnectionError(String),
-    ImagePullError(String),
-    ContainerCreationError(String),
-    ContainerStartError(String),
-    ContainerInspectError(String),
-}
-
-impl fmt::Display for DockerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DockerError::ConnectionError(msg) => write!(f, "Connection error: {}", msg),
-            DockerError::ImagePullError(msg) => write!(f, "Image pull error: {}", msg),
-            DockerError::ContainerCreationError(msg) => {
-                write!(f, "Container creation error: {}", msg)
-            }
-            DockerError::ContainerStartError(msg) => write!(f, "Container start error: {}", msg),
-            DockerError::ContainerInspectError(msg) => {
-                write!(f, "Container inspect error: {}", msg)
-            }
-        }
-    }
+#[async_trait]
+pub trait DockerClient: Send + Sync {
+    async fn get_container_status(
+        &self,
+        id: &String,
+    ) -> Result<ContainerStateStatusEnum, DockerError>;
+    async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError>;
+    async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError>;
 }
 
 #[derive(Debug)]
@@ -52,7 +41,7 @@ impl DockerManager {
         })
     }
 
-    pub fn client(&self) -> Docker {
+    fn client(&self) -> Docker {
         self.client.clone()
     }
 
@@ -134,7 +123,7 @@ impl DockerManager {
                 .unwrap_or_else(|| ContainerStateStatusEnum::EMPTY);
 
             tracing::debug!(
-                id=%&container_id[..8.min(container_id.len())],
+                id=%short_id(&container_id),
                 status=%status,
                 "Started container"
             );
@@ -155,6 +144,26 @@ impl DockerManager {
             name: pod.metadata.user.name,
             containers: container_runtimes,
         })
+    }
+
+    pub async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError> {
+        let docker = self.client();
+
+        for cid in container_ids {
+            let id = short_id(cid);
+            docker.stop_container(cid, None).await.map_err(|e| {
+                tracing::warn!(id=%id, error=%e, "Failed to stop container");
+                DockerError::ContainerStopError(e.to_string())
+            })?;
+            tracing::debug!(id=%id, "Stopped container");
+            docker.remove_container(cid, None).await.map_err(|e| {
+                tracing::warn!(id=%id, error=%e, "Failed to remove container");
+                DockerError::ContainerRemovalError(e.to_string())
+            })?;
+            tracing::debug!(id=%id, "Removed container");
+        }
+
+        Ok(())
     }
 
     async fn ensure_image(&self, docker: &Docker, image: &str) -> Result<(), DockerError> {
@@ -180,4 +189,24 @@ impl DockerManager {
 
         Ok(())
     }
+}
+
+#[async_trait]
+impl DockerClient for DockerManager {
+    async fn get_container_status(
+        &self,
+        id: &String,
+    ) -> Result<ContainerStateStatusEnum, DockerError> {
+        self.get_container_status(id).await
+    }
+    async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
+        self.start_pod(pod).await
+    }
+    async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError> {
+        self.stop_pod(container_ids).await
+    }
+}
+
+fn short_id(id: &str) -> &str {
+    id.get(0..8).unwrap_or(id)
 }
