@@ -1,5 +1,7 @@
 use crate::state::State;
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use bytes::Bytes;
+use futures_util::StreamExt;
 use shared::api::LogsQuery;
 use uuid::Uuid;
 
@@ -34,10 +36,6 @@ async fn pod_logs(
     let pod_id = path_string.into_inner();
     let follow = query.follow.unwrap_or(false);
 
-    if follow {
-        return HttpResponse::NotImplemented().finish();
-    }
-
     let pod_runtime = match state.get_pod_runtime(&pod_id) {
         Some(p) => p,
         None => return HttpResponse::NotFound().body("Pod runtime not found in node cache"),
@@ -60,11 +58,35 @@ async fn pod_logs(
         }
     };
 
-    match state.docker_mgr.get_logs(container_id).await {
-        Ok(logs) => HttpResponse::Ok().body(logs),
-        Err(err) => {
-            tracing::error!("Error getting pod logs: {}", err);
-            HttpResponse::InternalServerError().finish()
+    if follow {
+        match state.docker_mgr.stream_logs(container_id).await {
+            Ok(stream) => {
+                let byte_stream = stream.map(|res| match res {
+                    Ok(bytes) => Ok::<Bytes, actix_web::Error>(bytes),
+                    Err(err) => {
+                        tracing::error!("Stream error: {}", err);
+                        Err(actix_web::error::ErrorInternalServerError(
+                            "streaming error",
+                        ))
+                    }
+                });
+
+                HttpResponse::Ok()
+                    .content_type("text/plain")
+                    .streaming(byte_stream)
+            }
+            Err(err) => {
+                tracing::error!("Error streaming logs: {}", err);
+                HttpResponse::InternalServerError().body("Error streaming logs")
+            }
+        }
+    } else {
+        match state.docker_mgr.get_logs(container_id).await {
+            Ok(logs) => HttpResponse::Ok().body(logs),
+            Err(err) => {
+                tracing::error!("Error getting pod logs: {}", err);
+                HttpResponse::InternalServerError().body("Error fetching logs")
+            }
         }
     }
 }

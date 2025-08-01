@@ -1,8 +1,7 @@
 use crate::State;
-use actix_web::{
-    HttpResponse, Responder,
-    web::{self, Bytes},
-};
+use actix_web::{HttpResponse, Responder, web};
+use bytes::Bytes;
+use futures_util::StreamExt;
 use shared::api::{
     CreateResponse, EventType, LogsQuery, PodEvent, PodField, PodManifest, PodPatch,
     PodQueryParams, PodStatusUpdate,
@@ -204,14 +203,10 @@ async fn logs(
     let pod_name = path_string.into_inner();
     let follow = query.follow.unwrap_or(false);
 
-    if follow {
-        return HttpResponse::NotImplemented().finish();
-    };
-
     let Some(pod_info) = state.cache.get_pod_info(&pod_name) else {
         return HttpResponse::NotFound().body("Pod not found in server cache");
     };
-    let pod_id = pod_info.id;
+
     let node_name = pod_info.node;
 
     let node = match state.get_node(&node_name).await {
@@ -221,13 +216,11 @@ async fn logs(
             return HttpResponse::InternalServerError().finish();
         }
         Err(err) => {
-            tracing::warn!(
-                error=%err,
-                "Failed to get node"
-            );
+            tracing::warn!(error=%err, "Failed to get node");
             return err.to_http_response();
         }
     };
+
     let Ok(socket_addr) = node.addr.parse::<std::net::SocketAddr>() else {
         tracing::error!(addr = %node.addr, "Invalid node address format");
         return HttpResponse::InternalServerError().finish();
@@ -235,22 +228,41 @@ async fn logs(
 
     let port = socket_addr.port();
     let host = format!("http://{}:{}", node_name, port);
-    let mut url = format!("{}/pods/{}/logs", host, pod_id);
+    let mut url = format!("{}/pods/{}/logs", host, pod_info.id);
 
     let mut query_params = vec![];
     if let Some(container) = &query.container {
         query_params.push(format!("container={}", container));
     }
+    if follow {
+        query_params.push("follow=true".to_string());
+    }
     if !query_params.is_empty() {
         url = format!("{}?{}", url, query_params.join("&"));
     }
+
     // Forward the request to the node
     match reqwest::Client::new().get(&url).send().await {
         Ok(resp) => {
             let status = resp.status();
-            let body = resp.bytes().await.unwrap_or_default();
-            HttpResponse::build(actix_web::http::StatusCode::from_u16(status.as_u16()).unwrap())
-                .body(body)
+
+            if follow {
+                let stream = resp.bytes_stream().map(|chunk| match chunk {
+                    Ok(bytes) => Ok::<Bytes, actix_web::Error>(bytes),
+                    Err(err) => {
+                        tracing::error!("Stream error from node: {}", err);
+                        Err(actix_web::error::ErrorInternalServerError("stream error"))
+                    }
+                });
+
+                HttpResponse::build(actix_web::http::StatusCode::from_u16(status.as_u16()).unwrap())
+                    .content_type("text/plain")
+                    .streaming(stream)
+            } else {
+                let body = resp.bytes().await.unwrap_or_default();
+                HttpResponse::build(actix_web::http::StatusCode::from_u16(status.as_u16()).unwrap())
+                    .body(body)
+            }
         }
         Err(err) => {
             tracing::error!(%err, "Failed to fetch logs from node");

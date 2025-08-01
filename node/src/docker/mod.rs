@@ -13,7 +13,8 @@ pub enum DockerError {
     ContainerInspectError(String),
     ContainerRemovalError(String),
     ContainerStopError(String),
-    ContainerLogsError(String),
+    LogsError(String),
+    StreamLogsError(String),
 }
 
 impl fmt::Display for DockerError {
@@ -32,7 +33,8 @@ impl fmt::Display for DockerError {
             DockerError::ContainerInspectError(msg) => {
                 write!(f, "Container inspect error: {}", msg)
             }
-            DockerError::ContainerLogsError(msg) => write!(f, "Container logs error: {}", msg),
+            DockerError::LogsError(msg) => write!(f, "Logs error: {}", msg),
+            DockerError::StreamLogsError(msg) => write!(f, "Stream logs error: {}", msg),
         }
     }
 }

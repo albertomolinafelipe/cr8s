@@ -12,8 +12,10 @@ use bollard::{
     image::CreateImageOptions,
     secret::ContainerStateStatusEnum,
 };
+use bytes::Bytes;
 use dashmap::DashSet;
-use futures_util::stream::TryStreamExt;
+use futures_util::StreamExt;
+use futures_util::stream::{BoxStream, TryStreamExt};
 use shared::models::PodObject;
 use std::collections::HashMap;
 
@@ -26,6 +28,10 @@ pub trait DockerClient: Send + Sync {
     async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError>;
     async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError>;
     async fn get_logs(&self, container_id: &str) -> Result<String, DockerError>;
+    async fn stream_logs(
+        &self,
+        id: &str,
+    ) -> Result<BoxStream<'static, Result<bytes::Bytes, DockerError>>, DockerError>;
 }
 
 #[derive(Debug)]
@@ -211,7 +217,7 @@ impl DockerClient for DockerManager {
         while let Some(chunk) = logs_stream
             .try_next()
             .await
-            .map_err(|e| DockerError::ContainerLogsError(e.to_string()))?
+            .map_err(|e| DockerError::LogsError(e.to_string()))?
         {
             match chunk {
                 LogOutput::StdOut { message }
@@ -224,6 +230,43 @@ impl DockerClient for DockerManager {
         }
 
         Ok(output)
+    }
+    async fn stream_logs(
+        &self,
+        id: &str,
+    ) -> Result<BoxStream<'static, Result<Bytes, DockerError>>, DockerError> {
+        let docker = self.client();
+
+        let mut logs_stream = docker.logs(
+            id,
+            Some(LogsOptions {
+                follow: true,
+                stdout: true,
+                stderr: true,
+                timestamps: false,
+                tail: "all".to_string(),
+                since: 0,
+                ..Default::default()
+            }),
+        );
+
+        let stream = async_stream::stream! {
+            while let Some(item) = logs_stream.next().await {
+                match item {
+                    Ok(LogOutput::StdOut { message })
+                        | Ok(LogOutput::StdErr { message })
+                        | Ok(LogOutput::Console { message }) => {
+                            yield Ok(message);
+                        }
+                    Ok(_) => continue,
+                    Err(e) => {
+                        yield Err(DockerError::StreamLogsError(e.to_string()));
+                        break;
+                    }
+                }
+            }
+        };
+        Ok(Box::pin(stream))
     }
 }
 

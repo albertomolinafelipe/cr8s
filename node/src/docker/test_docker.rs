@@ -3,6 +3,7 @@ use crate::docker::manager::DockerClient;
 use crate::state::{ContainerRuntime, PodRuntime};
 use async_trait::async_trait;
 use bollard::secret::ContainerStateStatusEnum;
+use futures_util::stream::BoxStream;
 use shared::models::PodObject;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -104,7 +105,14 @@ impl DockerClient for TestDocker {
         Ok(())
     }
 
-    async fn get_logs(&self, container_id: &str) -> Result<String, DockerError> {
+    async fn get_logs(&self, _container_id: &str) -> Result<String, DockerError> {
         Ok("Here, your logs".to_string())
+    }
+
+    async fn stream_logs(
+        &self,
+        _id: &str,
+    ) -> Result<BoxStream<'static, Result<bytes::Bytes, DockerError>>, DockerError> {
+        Err(DockerError::StreamLogsError("Forced".into()))
     }
 }

@@ -10,9 +10,10 @@ name = "r8sctl"
 [dependencies]
 shared = { path = "../shared"}
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1", features = ["derive"]}
 serde_yaml = "0.9"
 tabled = "0.20"
 erased-serde = "0.3"
+futures-util = "0.3"

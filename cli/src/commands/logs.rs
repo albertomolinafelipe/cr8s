@@ -1,6 +1,8 @@
 use crate::config::Config;
 use clap::Parser;
+use futures_util::StreamExt;
 use reqwest::StatusCode;
+use tokio::io::{self, AsyncWriteExt};
 
 #[derive(Parser, Debug)]
 pub struct LogArgs {
@@ -30,15 +32,51 @@ pub async fn handle_logs(config: &Config, args: &LogArgs) {
     if !query.is_empty() {
         url = format!("{}?{}", url, query.join("&"));
     }
+
     match reqwest::Client::new().get(&url).send().await {
         Ok(resp) => match resp.status() {
-            StatusCode::OK | StatusCode::NOT_FOUND => match resp.text().await {
-                Ok(body) => println!("{}", body),
-                Err(err) => eprintln!("Failed to read response body: {}", err),
-            },
-            StatusCode::BAD_REQUEST => eprintln!("Multicontainer pods require container flag"),
-            _ => {}
+            StatusCode::OK => {
+                if args.follow {
+                    let mut stream = resp.bytes_stream();
+                    let mut stdout = io::stdout();
+
+                    while let Some(chunk) = stream.next().await {
+                        match chunk {
+                            Ok(bytes) => {
+                                if let Err(e) = stdout.write_all(&bytes).await {
+                                    eprintln!("Write error: {}", e);
+                                    break;
+                                }
+                                let _ = stdout.flush().await;
+                            }
+                            Err(e) => {
+                                eprintln!("Stream error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    match resp.text().await {
+                        Ok(body) => println!("{}", body),
+                        Err(err) => eprintln!("Failed to read response body: {}", err),
+                    }
+                }
+            }
+            StatusCode::NOT_FOUND => {
+                let body = resp
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Not found".to_string());
+                eprintln!("{}", body);
+            }
+            StatusCode::BAD_REQUEST => {
+                eprintln!("Multicontainer pods require --container");
+            }
+            other => {
+                let body = resp.text().await.unwrap_or_default();
+                eprintln!("Unexpected status {}: {}", other, body);
+            }
         },
-        _ => {}
+        Err(err) => eprintln!("Request error: {}", err),
     }
 }
