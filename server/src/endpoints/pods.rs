@@ -1,9 +1,19 @@
+//! Pod Controller
+//!
+//! ## Routes
+//! - `GET    /pods`                    — List or watch pods (with optional filters)
+//! - `POST   /pods`                    — Create a new pod
+//! - `DELETE /pods/{pod_name}`         — Delete a pod
+//! - `PATCH  /pods/{pod_name}`         — Update pod fields
+//! - `PATCH  /pods/{pod_name}/status`  — Update the pod's status
+//! - `GET    /pods/{pod_name}/logs`    — Get or stream pods logs
+
 use crate::State;
 use actix_web::{HttpResponse, Responder, web};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use shared::api::{
-    CreateResponse, EventType, LogsQuery, PodEvent, PodField, PodManifest, PodPatch,
+    CreateResponse, EventType, LogsQueryParams, PodEvent, PodField, PodManifest, PodPatch,
     PodQueryParams, PodStatusUpdate,
 };
 
@@ -16,7 +26,15 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .route("", web::post().to(create));
 }
 
-/// List, fetch and search pods
+/// List or watch pods, optionally filtered by node name.
+///
+/// # Arguments
+/// - `query`: Query parameters:
+///    - `watch` (bool, optional): If true, opens a watch stream of pod events.
+///    - `node_name` (String, optional): Filter pods assigned to the specified node.
+///
+/// # Returns
+/// - 200 list of pods or stream of pod events
 async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder {
     tracing::debug!(
         watch=%query.watch.unwrap_or(false),
@@ -27,7 +45,7 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
         let node_name = query.node_name.clone();
         let pods = state.get_pods(node_name.clone()).await;
         let stream = async_stream::stream! {
-            // List all pods
+            // List all pods as added events
             for p in &pods {
                 let event = PodEvent {
                     pod: p.clone(),
@@ -41,7 +59,7 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
                 let json = serde_json::to_string(&event).unwrap();
                 yield Ok::<_, actix_web::Error>(Bytes::from(json + "\n"));
             }
-            // Wacth new events
+            // Watch new events
             let mut rx = state.pod_tx.subscribe();
             while let Ok(event) = rx.recv().await {
                 if let Some(name) = node_name.as_deref() {
@@ -66,7 +84,17 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
     }
 }
 
-/// Update pod status
+/// Update the status of a specific pod.
+///
+/// # Arguments
+/// - `path_string`: Pod name from URL path.
+/// - `body`: Pod status update JSON.
+///
+/// # Returns
+/// - 200: Status updated.
+/// - 401: Pod is not assigned to node making call
+/// - 403: Node name not registered in system
+/// - 404: Pod not found.
 async fn status(
     state: State,
     path_string: web::Path<String>,
@@ -122,7 +150,14 @@ async fn status(
     }
 }
 
-/// Update pod
+/// Update pod fields like node assignment.
+///
+/// # Arguments
+/// - `path_string`: Pod name from URL path.
+/// - `body`: Patch JSON.
+///
+/// # Returns
+/// - 204: Patch applied.
 async fn update(
     state: State,
     path_string: web::Path<String>,
@@ -145,11 +180,23 @@ async fn update(
     }
 }
 
-/// Add spec object to the system
+/// Create a new pod.
+///
+/// # Arguments
+/// - `body`: Pod manifest JSON.
+///
+/// # Returns
+/// - 201: Pod created.
+/// - 400: Invalid manifest format
+/// - 409: Repeat pod
 async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
     let spec_obj = body.into_inner();
     let pod_name = spec_obj.metadata.name.clone();
     tracing::debug!(name=%pod_name, "Received pod manifest");
+
+    if state.cache.pod_name_exists(&spec_obj.metadata.name) {
+        return HttpResponse::Conflict().body("Duplicate pod name");
+    };
 
     match state.add_pod(spec_obj.spec, spec_obj.metadata).await {
         Ok(id) => {
@@ -173,7 +220,14 @@ async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
     }
 }
 
-/// Delete pod by name
+/// Delete a pod by name.
+///
+/// # Arguments
+/// - `path_string`: Pod name from URL path.
+///
+/// # Returns
+/// - 204: Pod deleted
+/// - 404: Pod not found
 async fn delete(state: State, path_string: web::Path<String>) -> impl Responder {
     let pod_name = path_string.into_inner();
     match state.delete_pod(&pod_name).await {
@@ -194,11 +248,22 @@ async fn delete(state: State, path_string: web::Path<String>) -> impl Responder 
     }
 }
 
-/// Display the logs of a pod routing the request to the assigned node
+/// Fetch pod logs by forwarding request to assigned node.
+///
+/// # Arguments
+/// - `path_string`: Pod name from URL path.
+/// - `query`: Query parameters:
+///    - `follow` (bool, optional): Stream logs live.
+///    - `container` (string, optional): Filter by container.
+///
+/// # Returns
+/// - 200: Logs streamed or full logs returned.
+/// - 400: Multicontainer pod with no container id given
+/// - 404: Pod not found or container not found in pod
 async fn logs(
     state: State,
     path_string: web::Path<String>,
-    query: web::Query<LogsQuery>,
+    query: web::Query<LogsQueryParams>,
 ) -> impl Responder {
     let pod_name = path_string.into_inner();
     let follow = query.follow.unwrap_or(false);
@@ -273,6 +338,35 @@ async fn logs(
 
 #[cfg(test)]
 mod tests {
+
+    //!  GET
+    //!  - test_get_pods_query
+    //!  - test_get_pods_watch
+    //!         pods added before and after watch call, assigned and unassigned
+    //!
+    //!  STATUS
+    //!  - test_update_pod_status
+    //!  - test_update_pod_status_pod_name_not_found
+    //!  - test_update_pod_status_node_not_found
+    //!  - test_update_pod_status_not_assigned_to_caller
+    //!
+    //!
+    //!  PATCH POD
+    //!  - test_assign_pod
+    //!  - test_assign_pod_invalid_node_name
+    //!  - test_assign_pod_not_found
+    //!  - test_assign_pod_already_assigned
+    //!  - test_update_pod_spec
+    //!
+    //!  CREATE
+    //!  - test_create_pod
+    //!  - test_create_pod_repeat_name
+    //!  - test_create_pod_repeat_container_names
+    //!
+    //!  DELETE
+    //!  - test_delete_pod
+    //!  - test_delete_not_found
+
     use crate::endpoints::helpers::collect_stream_events;
     use crate::store::{state::new_state_with_store, test_store::TestStore};
 
@@ -321,36 +415,6 @@ mod tests {
         assert!(state.add_pod(spec, metadata.clone()).await.is_ok());
         return metadata.name;
     }
-
-    ///  
-    ///  GET
-    ///  - test_get_pods_query
-    ///  - test_get_pods_watch
-    ///         pods added before and after watch call, assigned and unassigned
-    ///
-    ///  STATUS
-    ///  - test_update_pod_status
-    ///  - test_update_pod_status_pod_name_not_found
-    ///  - test_update_pod_status_node_not_found
-    ///  - test_update_pod_status_not_assigned_to_caller
-    ///
-    ///
-    ///  PATCH POD
-    ///  - test_assign_pod
-    ///  - test_assign_pod_invalid_node_name
-    ///  - test_assign_pod_not_found
-    ///  - test_assign_pod_already_assigned
-    ///  - test_update_pod_spec
-    ///
-    ///  CREATE
-    ///  - test_create_pod
-    ///  - test_create_pod_repeat_name
-    ///  - test_create_pod_repeat_container_names
-    ///
-    ///  DELETE
-    ///  - test_delete_pod
-    ///  - test_delete_not_found
-    ///
 
     #[actix_web::test]
     async fn test_get_pods_query() {

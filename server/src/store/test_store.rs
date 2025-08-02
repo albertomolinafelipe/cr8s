@@ -1,3 +1,7 @@
+//! In-memory test implementation of the `Store` trait.
+//!
+//! This mock store uses DashMap to simulate a concurrent store for unit and integration tests
+
 use super::errors::StoreError;
 use super::store::Store;
 use async_trait::async_trait;
@@ -5,6 +9,7 @@ use dashmap::DashMap;
 use shared::models::{Node, PodObject};
 use uuid::Uuid;
 
+/// An in-memory implementation of `Store`, used for testing purposes.
 pub struct TestStore {
     pub pods: DashMap<Uuid, PodObject>,
     pub nodes: DashMap<String, Node>,

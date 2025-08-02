@@ -1,3 +1,6 @@
+//! Test implementation of the DockerClient trait for use in unit tests.
+//! Simulates container lifecycle behavior with configurable error injection.
+
 use crate::docker::DockerError;
 use crate::docker::manager::DockerClient;
 use crate::state::{ContainerRuntime, PodRuntime};
@@ -10,6 +13,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+/// A mock Docker client for testing, simulating container operations with optional failure modes.
 #[derive(Debug, Clone)]
 pub struct TestDocker {
     containers: Arc<Mutex<HashMap<String, ContainerStateStatusEnum>>>,
@@ -20,6 +24,7 @@ pub struct TestDocker {
 }
 
 impl TestDocker {
+    /// Create a new instance of the test Docker client with no containers or failures set.
     pub fn new() -> Self {
         Self {
             containers: Arc::new(Mutex::new(HashMap::new())),
@@ -30,11 +35,13 @@ impl TestDocker {
         }
     }
 
+    /// Insert a fake container with the given ID and status into the mock state.
     pub async fn add_fake_container(&self, id: &str, status: ContainerStateStatusEnum) {
         let mut lock = self.containers.lock().await;
         lock.insert(id.to_string(), status);
     }
 
+    /// Generate a mock container ID by appending a UUID to the container name.
     fn generate_container_id(name: &str) -> String {
         format!("{}-{}", name, Uuid::new_v4())
     }

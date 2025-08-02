@@ -1,3 +1,8 @@
+//! # Pod Status Sync Loop
+//!
+//! This module defines a background task that periodically polls the state of all container
+//! runtimes and reports their status back to the control plane.
+
 use std::time::Duration;
 
 use bollard::secret::ContainerStateStatusEnum;
@@ -7,20 +12,27 @@ use tokio::time;
 
 use crate::state::State;
 
+/// Starts the periodic pod status sync loop.
+///
+/// This continuously polls container states via the Docker manager and sends status updates
+/// to the control plane via PATCH requests.
+///
+/// Loop interval is defined by the `SYNC_LOOP_INTERVAL` environment variable (in seconds).
 pub async fn run(state: State) -> Result<(), String> {
-    let mut interval = time::interval(Duration::from_secs(state.config.sync_loop.into()));
     tracing::info!(sync=%state.config.sync_loop, "Starting sync loop");
+    let mut interval = time::interval(Duration::from_secs(state.config.sync_loop.into()));
+    let client = Client::new();
     loop {
         interval.tick().await;
-        let client = Client::new();
         for p in state.list_pod_runtimes().iter() {
             let mut container_statuses: Vec<(String, String)> = Vec::new();
-            // Over simplification obv
             let mut pod_status = PodStatus::Running;
             for c in p.containers.values() {
                 let status = state.docker_mgr.get_container_status(&c.id).await;
                 match status {
                     Ok(s) => {
+                        // build array of status
+                        // get simplified aggregate pod status
                         container_statuses.push((c.spec_name.clone(), s.to_string()));
                         if s != ContainerStateStatusEnum::RUNNING {
                             pod_status = PodStatus::Succeeded;
@@ -29,10 +41,11 @@ pub async fn run(state: State) -> Result<(), String> {
                     Err(e) => tracing::error!(error=%e, "Failed to get container status"),
                 }
             }
+            // build response
             let update = PodStatusUpdate {
                 status: pod_status,
                 container_statuses,
-                node_name: state.node_name(),
+                node_name: state.config.name.clone(),
             };
             let response = client
                 .patch(format!(
@@ -44,7 +57,7 @@ pub async fn run(state: State) -> Result<(), String> {
                 .await;
 
             match response {
-                Ok(resp) => tracing::trace!(response=%resp.status(), "Status update sent"),
+                Ok(_) => {}
                 Err(err) => tracing::warn!(error=%err, "Status update failed"),
             }
         }

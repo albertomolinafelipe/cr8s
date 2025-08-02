@@ -1,16 +1,24 @@
+//! CLI `delete` command to remove resources from the server by name.
+//! Currently supports deleting Pods via HTTP DELETE.
+
 use clap::Parser;
 use reqwest::StatusCode;
 
 use crate::{commands::ResourceKind, config::Config};
 
+/// CLI arguments for the `delete` command.
 #[derive(Parser, Debug)]
 pub struct DeleteArgs {
-    /// Name of pod to delete
+    /// Type of resource to delete (e.g., Pod)
     #[arg(value_enum)]
     resource: ResourceKind,
+
+    /// Name or ID of the resource
     identifier: String,
 }
 
+/// Handles the `delete` command:
+/// Constructs a DELETE request based on the resource type and sends it to the server.
 #[tokio::main]
 pub async fn handle_delete(config: &Config, args: &DeleteArgs) {
     match args.resource {

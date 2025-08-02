@@ -1,7 +1,13 @@
+//! Shared data models used across the project for Pods, Nodes, and metadata.
+//! These types are serialized and exchanged between components like server, node, and CLI.
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// --- Pod model ---
+
+/// A representation of a Pod instance, including status, metadata, and spec.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PodObject {
     pub id: Uuid,
@@ -9,17 +15,30 @@ pub struct PodObject {
     pub pod_status: PodStatus,
     pub metadata: Metadata,
     pub last_status_update: Option<DateTime<Utc>>,
+    /// Map between container name and status received from docker api
     pub container_status: Vec<(String, String)>,
     pub spec: PodSpec,
 }
 
-/// Specification of a Pod
+/// Specification of a Pod, primarily its containers.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PodSpec {
     pub containers: Vec<ContainerSpec>,
 }
 
-/// Definition of a container within a Pod.
+/// Status of a Pod during its lifecycle.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum PodStatus {
+    Pending,
+    Running,
+    Failed,
+    Succeeded,
+    Unknown,
+}
+
+// --- Container model ---
+
+/// Definition of a container inside a Pod.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ContainerSpec {
     pub name: String,
@@ -28,7 +47,7 @@ pub struct ContainerSpec {
     pub env: Option<Vec<EnvVar>>,
 }
 
-/// Environment variable for a container.
+/// Environment variable assigned to a container.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EnvVar {
     pub name: String,
@@ -42,12 +61,15 @@ pub struct Port {
     pub container_port: u16,
 }
 
-/// Metadata for any top-level object, includes at least a name.
+// --- Metadata model ---
+
+/// User-defined metadata common to all top-level objects.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UserMetadata {
     pub name: String,
 }
 
+/// Full metadata including timestamps and generation info.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Metadata {
     pub created_at: DateTime<Utc>,
@@ -57,7 +79,9 @@ pub struct Metadata {
     pub user: UserMetadata,
 }
 
-/// Represents a node in the cluster.
+// --- Node model ---
+
+/// Represents a node in the distributed system.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Node {
     pub id: Uuid,
@@ -68,22 +92,14 @@ pub struct Node {
     pub last_heartbeat: DateTime<Utc>,
 }
 
-/// Status of a node in the cluster.
+/// Runtime status of a node.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum NodeStatus {
     Ready,
     Stopped,
 }
 
-/// Status of a Pod during its lifecycle.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub enum PodStatus {
-    Pending,
-    Running,
-    Failed,
-    Succeeded,
-    Unknown,
-}
+// --- Default implementations ---
 
 impl Default for Metadata {
     fn default() -> Self {

@@ -1,3 +1,12 @@
+//! Node Controller
+//!
+//! This module defines HTTP handlers for managing cluster nodes. It provides
+//! endpoints for node registration and for listing or watching registered nodes.
+//!
+//! ## Routes
+//! - `GET  /nodes`  — List or watch all registered nodes
+//! - `POST /nodes`  — Register a new node with the control plane
+
 use crate::State;
 use actix_web::{
     HttpRequest, HttpResponse, Responder,
@@ -20,7 +29,14 @@ pub struct NodeQuery {
     watch: Option<bool>,
 }
 
-/// List, fetch and search pods
+/// List or watch nodes
+///
+/// # Arguments
+/// - `query`: Query parameters:
+///    - `watch` (bool, optional): If true, opens a watch stream of node events.
+///
+/// # Returns
+/// - 200 list of nodes or stream of node events
 async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
     if query.watch.unwrap_or(false) {
         // Watch mode
@@ -52,7 +68,15 @@ async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
     }
 }
 
-/// Nodes register to the service
+/// Register a new node with the control plane.
+///
+/// # Arguments
+/// - `payload`: Node register JSON
+///
+/// # Returns
+/// - 201: Node successfully registered.
+/// - 400: Emtpy node name
+/// - 409: Duplicate name or address
 async fn register(
     req: HttpRequest,
     state: State,
@@ -72,6 +96,15 @@ async fn register(
         last_heartbeat: chrono::Utc::now(),
     };
 
+    // validate node name and check for name and addr duplicates
+    if node.name.is_empty() {
+        return HttpResponse::BadRequest().body("Node name is empty");
+    };
+    if state.cache.node_addr_exists(&node.addr) || state.cache.node_name_exists(&node.name) {
+        return HttpResponse::Conflict().body("Duplicate node name or address");
+    };
+
+    // Store node
     match state.add_node(&node).await {
         Ok(()) => {
             tracing::info!(
@@ -93,6 +126,18 @@ async fn register(
 
 #[cfg(test)]
 mod tests {
+    //!  GET
+    //!  - test_get_nodes  
+    //!  - test_get_nodes_empty
+    //!  - test_get_nodes_watch
+    //!         nodes added before and after watch call
+    //!
+    //!  REGISTER
+    //!  - test_register_node
+    //!  - test_register_node_empty_name
+    //!  - test_register_node_repeat_name
+    //!  - test_register_node_repeat_addr
+
     use crate::endpoints::helpers::collect_stream_events;
     use crate::store::{state::new_state_with_store, test_store::TestStore};
 
@@ -121,19 +166,6 @@ mod tests {
         )
         .await
     }
-    ///  
-    ///  GET
-    ///  - test_get_nodes  
-    ///  - test_get_nodes_empty
-    ///  - test_get_nodes_watch
-    ///         nodes added before and after watch call
-    ///
-    ///  REGISTER
-    ///  - test_register_node
-    ///  - test_register_node_empty_name
-    ///  - test_register_node_repeat_name
-    ///  - test_register_node_repeat_addr
-    ///
 
     #[actix_web::test]
     async fn test_get_nodes_empty() {

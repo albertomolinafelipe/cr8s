@@ -2,12 +2,15 @@
 name = "server"
 version = "0.1.0"
 edition = "2024"
+description = "Control plane component, apiserver, scheduler and drift controller"
 
 [dependencies]
 shared = { path = "../shared"}
+
 # HTTP server and client
 actix-web = "4.11.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+
 # Concurrency
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
@@ -15,18 +18,23 @@ async-stream = "0.3"
 futures = "0.3"
 futures-util = "0.3"
 async-trait = "0.1.88"
+dashmap = "6.1.0"
+
 # Serialization
 serde = { version = "1", features = ["derive"]}
 serde_json = "1"
-rand = "0.9.1"
+
 # Datatypes
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.17.0", features = ["serde", "v4"]}
 bytes = "1.10.1"
+rand = "0.9.1"
+
 # Storage
 etcd-client = "0.15"
+
 # Concurrent hashmap
-dashmap = "6.1.0"
+
 # logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "std"] }
@@ -34,5 +42,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "std"] }
 [dev-dependencies]
 wiremock = "0.6"
 actix-http = "3.11.0"
-
-
