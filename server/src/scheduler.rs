@@ -7,6 +7,7 @@ use futures_util::TryStreamExt;
 use rand::seq::IteratorRandom;
 use reqwest::Client;
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 use shared::api::{EventType, NodeEvent, PodEvent, PodField, PodPatch};
 use shared::models::{Node, PodObject};
 use std::sync::Arc;
@@ -175,7 +176,7 @@ async fn schedule(state: State, id: Uuid) {
     // make patch call to api server
     let patch = PodPatch {
         pod_field: PodField::NodeName,
-        value: node.clone(),
+        value: Value::String(node.clone()),
     };
 
     let client = Client::new();

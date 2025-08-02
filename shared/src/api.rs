@@ -2,6 +2,7 @@
 //! including request/response payloads, query params, and event models.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::models::{Node, PodObject, PodSpec, PodStatus, UserMetadata};
@@ -78,7 +79,7 @@ pub enum EventType {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct PodPatch {
     pub pod_field: PodField,
-    pub value: String,
+    pub value: Value,
 }
 
 /// Enum representing which field of the pod is being patched.
@@ -88,6 +89,8 @@ pub enum PodField {
     NodeName,
     #[serde(rename = "spec")]
     Spec,
+    #[serde(rename = "status")]
+    Status,
 }
 
 /// Message used to update the status of a pod and its containers.
