@@ -1,3 +1,6 @@
+//! CLI `create` command for applying manifest files to the API server.
+//! Supports parsing Kubernetes-like YAML files and sending typed objects over HTTP.
+
 use clap::Parser;
 use erased_serde::serialize_trait_object;
 use reqwest::Client;
@@ -8,6 +11,7 @@ use tokio::fs;
 
 use crate::config::Config;
 
+/// CLI arguments for the `create` command.
 #[derive(Parser, Debug)]
 pub struct CreateArgs {
     /// Path to the YAML file containing the deployment spec
@@ -15,8 +19,11 @@ pub struct CreateArgs {
     pub file: String,
 }
 
+/// Handles the `create` command:
+/// Reads a YAML file, parses objects, and posts them to the configured server.
 #[tokio::main]
 pub async fn handle_create(config: &Config, args: &CreateArgs) {
+    // read content of the file
     let content = match fs::read_to_string(&args.file).await {
         Ok(c) => c,
         Err(e) => {
@@ -25,6 +32,7 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
         }
     };
 
+    // parse each object into manifests
     let docs: Vec<GenericManifest> = match serde_yaml::Deserializer::from_str(&content)
         .map(|doc| serde_yaml::from_value(serde_yaml::Value::deserialize(doc).unwrap()))
         .collect::<Result<_, _>>()
@@ -36,26 +44,27 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
         }
     };
 
+    // send each manigest to the specified resource endpoint
     let client = Client::new();
-
     for object in docs {
         let url = format!("{}/{}s", config.url, object.spec);
         let manifest = object.spec.into_manifest(object.metadata);
 
         match client.post(&url).json(&manifest).send().await {
             Ok(resp) => resp,
-            Err(e) => {
-                eprintln!("Failed to send request to {}: {}", url, e);
-                continue;
-            }
+            Err(_) => continue,
         };
     }
 }
 
-/// Marker trait for serializable manifests
+// --- Manifest trait ---
+
+/// Marker trait for serializable manifests that can be sent over the wire.
 pub trait Manifest: erased_serde::Serialize + Send + Sync {}
 impl<T: Serialize + Send + Sync> Manifest for T {}
 serialize_trait_object!(Manifest);
+
+// --- Generic manifest format ---
 
 /// Represents a top-level Kubernetes-like object with metadata and a kind-specific spec.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -65,7 +74,9 @@ pub struct GenericManifest {
     pub spec: Spec,
 }
 
-/// Enum representing the specification of an object based on its kind.
+// --- Supported kinds ---
+
+/// Enum representing the specification of an object based on its `kind` in YAML.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "spec", rename_all = "PascalCase")]
 pub enum Spec {
@@ -74,6 +85,7 @@ pub enum Spec {
 }
 
 impl Spec {
+    /// Converts the enum variant into a boxed `Manifest` implementation.
     pub fn into_manifest(self, metadata: UserMetadata) -> Box<dyn Manifest> {
         match self {
             Spec::Pod(pod_spec) => Box::new(PodManifest {
@@ -86,6 +98,7 @@ impl Spec {
 }
 
 impl std::fmt::Display for Spec {
+    /// Formats the spec type as a lowercase kind string.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Spec::Pod(_) => write!(f, "pod"),
