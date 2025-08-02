@@ -1,3 +1,6 @@
+//! # Node API Server
+//! This module defines the HTTP API exposed by the node agent
+
 use crate::state::State;
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use bytes::Bytes;
@@ -5,6 +8,8 @@ use futures_util::StreamExt;
 use shared::api::LogsQueryParams;
 use uuid::Uuid;
 
+/// Routes:
+/// - `GET /pods/{pod_id}/logs`: Retrieves logs for a specific pod container.
 pub async fn run(state: State) -> Result<(), String> {
     tracing::info!("Starting api server");
     let port = state.config.port;
@@ -24,10 +29,27 @@ pub async fn run(state: State) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+/// Root endpoint handler.
 async fn root() -> impl Responder {
     HttpResponse::Ok().body("Hello from r8s-node")
 }
 
+/// Retrieves logs for a specific pod container.
+///
+/// Supports both static logs and streaming logs using the `follow` query param.
+/// If multiple containers exist, `container` query param must be specified.
+///
+/// # Query Parameters
+/// - `follow`: If true, stream logs.
+/// - `container`: (optional) container name in a multi-container pod.
+///
+/// # Path Parameters
+/// - `pod_id`: UUID of the pod.
+///
+/// # Returns
+/// - `200 OK` with logs or log stream.
+/// - `404 Not Found` if the pod or container is not present.
+/// - `400 Bad Request` if container name is required but not provided.
 async fn pod_logs(
     state: State,
     path_string: web::Path<Uuid>,
@@ -36,11 +58,13 @@ async fn pod_logs(
     let pod_id = path_string.into_inner();
     let follow = query.follow.unwrap_or(false);
 
+    // get pod runtime info
     let pod_runtime = match state.get_pod_runtime(&pod_id) {
         Some(p) => p,
         None => return HttpResponse::NotFound().body("Pod runtime not found in node cache"),
     };
 
+    // container id given by docker api
     let container_id = match &query.container {
         Some(name) => {
             let Some(container) = pod_runtime.containers.get(name) else {
@@ -48,6 +72,9 @@ async fn pod_logs(
             };
             &container.id
         }
+        // when no container name was given
+        // - multicontainer pods will get 400
+        // - otherwise get logs for only container
         None => {
             if pod_runtime.containers.len() != 1 {
                 return HttpResponse::BadRequest()
@@ -75,6 +102,7 @@ async fn pod_logs(
                     .content_type("text/plain")
                     .streaming(byte_stream)
             }
+
             Err(err) => {
                 tracing::error!("Error streaming logs: {}", err);
                 HttpResponse::InternalServerError().body("Error streaming logs")

@@ -49,7 +49,7 @@ pub async fn handle_logs(config: &Config, args: &LogArgs) {
                     while let Some(chunk) = stream.next().await {
                         match chunk {
                             Ok(bytes) => {
-                                if let Err(e) = stdout.write_all(&bytes).await {
+                                if let Err(_) = stdout.write_all(&bytes).await {
                                     break;
                                 }
                                 let _ = stdout.flush().await;

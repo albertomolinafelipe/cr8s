@@ -1,3 +1,8 @@
+//! # Node State Management
+//!
+//! This module defines the in-memory state of a node in the cluster
+//! Including its confi, known pods, runtime container info and docker
+
 use actix_web::web;
 use bollard::secret::ContainerStateStatusEnum;
 use dashmap::DashMap;
@@ -10,8 +15,10 @@ use uuid::Uuid;
 
 use crate::docker::manager::{DockerClient, DockerManager};
 
+/// Thread safe wrapper
 pub type State = web::Data<NodeState>;
 
+/// Runtime information for a pod
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PodRuntime {
     pub id: Uuid,
@@ -19,6 +26,7 @@ pub struct PodRuntime {
     pub containers: HashMap<String, ContainerRuntime>,
 }
 
+/// Runtime information for a container
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerRuntime {
     pub id: String,
@@ -27,50 +35,41 @@ pub struct ContainerRuntime {
     pub status: ContainerStateStatusEnum,
 }
 
+/// Global in-memory state for a single node.
 pub struct NodeState {
     pub config: Config,
     pub docker_mgr: Box<dyn DockerClient + Send + Sync>,
-    node_name: RwLock<String>,
     pods: DashMap<Uuid, PodObject>,
     pod_runtimes: DashMap<Uuid, PodRuntime>,
 }
 
 impl NodeState {
+    /// Initializes a new [`NodeState`] instance, loading config and starting Docker manager.
     pub fn new() -> Self {
         let docker_mgr = Box::new(
             DockerManager::start()
-                .inspect_err(|err| {
-                    tracing::error!(
-                    error=%err,
-                    "Failed to start docker manager")
-                })
+                .inspect_err(|err| tracing::error!(error=%err, "Failed to start docker manager"))
                 .expect(""),
         );
         Self {
             config: load_config(),
             docker_mgr,
-            node_name: RwLock::new(String::new()),
             pods: DashMap::new(),
             pod_runtimes: DashMap::new(),
         }
     }
 
-    pub fn node_name(&self) -> String {
-        self.node_name.read().unwrap().clone()
-    }
-
-    pub fn set_name(&self, name: String) {
-        *self.node_name.write().unwrap() = name;
-    }
-
+    /// Returns a pod by ID if it exists in the local pod cache.
     pub fn get_pod(&self, id: &Uuid) -> Option<PodObject> {
         self.pods.get(id).map(|r| r.clone())
     }
 
+    /// Returns the runtime info of a pod by ID if available.
     pub fn get_pod_runtime(&self, id: &Uuid) -> Option<PodRuntime> {
         self.pod_runtimes.get(id).map(|r| r.clone())
     }
 
+    /// Returns all tracked pod runtime entries.
     pub fn list_pod_runtimes(&self) -> Vec<PodRuntime> {
         self.pod_runtimes
             .iter()
@@ -78,6 +77,7 @@ impl NodeState {
             .collect()
     }
 
+    /// Returns a list of all pod names currently registered.
     pub fn get_pod_names(&self) -> Vec<String> {
         self.pods
             .iter()
@@ -85,17 +85,22 @@ impl NodeState {
             .collect()
     }
 
+    /// Inserts or updates a pod definition in the cache.
     pub fn put_pod(&self, pod: &PodObject) {
         self.pods.insert(pod.id, pod.clone());
     }
 
+    /// Removes a pod from the pod cache.
     pub fn delete_pod(&self, id: &Uuid) {
         self.pods.remove(id);
     }
+
+    /// Removes a pod runtime entry from the runtime cache.
     pub fn delete_pod_runtime(&self, id: &Uuid) {
         self.pod_runtimes.remove(id);
     }
 
+    /// Adds a new pod runtime entry if it doesn't already exist.
     pub fn add_pod_runtime(&self, pod_runtime: PodRuntime) -> Result<(), String> {
         if self.pod_runtimes.contains_key(&pod_runtime.id) {
             return Err(format!(
@@ -108,6 +113,7 @@ impl NodeState {
     }
 }
 
+/// Node configuration loaded from environment variables.
 #[derive(Debug)]
 pub struct Config {
     pub server_url: String,
@@ -118,6 +124,10 @@ pub struct Config {
     pub sync_loop: u16,
 }
 
+/// Loads node configuration from environment variables.
+///
+/// Falls back to defaults when applicable.
+/// Panics if `NODE_PORT` is missing or invalid.
 fn load_config() -> Config {
     let server_address = env::var("R8S_SERVER_HOST").unwrap_or_else(|_| "localhost".to_string());
 

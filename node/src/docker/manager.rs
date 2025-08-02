@@ -1,3 +1,9 @@
+//! # Docker Manager
+//!
+//! Provides an abstraction over the Docker API to manage containerized workloads.
+//! Implements the `DockerClient` trait, allowing the runtime to pull images,
+//! create, start, stop containers, and retrieve logs.
+
 use crate::{
     docker::DockerError,
     state::{ContainerRuntime, PodRuntime},
@@ -19,21 +25,32 @@ use futures_util::stream::{BoxStream, TryStreamExt};
 use shared::models::PodObject;
 use std::collections::HashMap;
 
+/// A trait for interacting with container operations needed by the scheduler runtime.
 #[async_trait]
 pub trait DockerClient: Send + Sync {
+    /// Get the current state/status of a container by ID.
     async fn get_container_status(
         &self,
         id: &String,
     ) -> Result<ContainerStateStatusEnum, DockerError>;
+
+    /// Start a pod by pulling its images and launching all specified containers.
     async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError>;
+
+    /// Stop and remove all containers in a pod
     async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError>;
+
+    /// Fetch the full logs for a container.
     async fn get_logs(&self, container_id: &str) -> Result<String, DockerError>;
+
+    /// Stream logs for a container as a byte stream.
     async fn stream_logs(
         &self,
         id: &str,
-    ) -> Result<BoxStream<'static, Result<bytes::Bytes, DockerError>>, DockerError>;
+    ) -> Result<BoxStream<'static, Result<Bytes, DockerError>>, DockerError>;
 }
 
+/// Tracks pulled images and handles bollard docker client
 #[derive(Debug)]
 pub struct DockerManager {
     images: DashSet<String>,
@@ -41,6 +58,7 @@ pub struct DockerManager {
 }
 
 impl DockerManager {
+    /// Initialize a new `DockerManager` using local Docker defaults.
     pub fn start() -> Result<Self, DockerError> {
         let client = Docker::connect_with_local_defaults()
             .map_err(|e| DockerError::ConnectionError(e.to_string()))?;
@@ -51,6 +69,7 @@ impl DockerManager {
         })
     }
 
+    /// Clone-safe getter for the internal Docker client.
     fn client(&self) -> Docker {
         self.client.clone()
     }
@@ -58,11 +77,11 @@ impl DockerManager {
     fn has_image(&self, image: &str) -> bool {
         self.images.contains(image)
     }
-
     fn mark_image_as_pulled(&self, image: String) {
         self.images.insert(image);
     }
 
+    /// Check and pull image if needed
     async fn ensure_image(&self, docker: &Docker, image: &str) -> Result<(), DockerError> {
         if self.has_image(image) {
             return Ok(());
@@ -94,26 +113,32 @@ impl DockerClient for DockerManager {
         &self,
         id: &String,
     ) -> Result<ContainerStateStatusEnum, DockerError> {
-        let docker = self.client();
-        let inspection = docker
+        let inspection = self
+            .client()
             .inspect_container(id, None::<InspectContainerOptions>)
             .await
             .map_err(|e| DockerError::ContainerInspectError(e.to_string()))?;
+
         Ok(inspection
             .state
             .as_ref()
             .and_then(|s| s.status.clone())
             .unwrap_or_else(|| ContainerStateStatusEnum::EMPTY))
     }
+
     async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
         let docker = self.client();
         let mut container_runtimes = HashMap::new();
 
+        // for every container spec in the pod
         for container_spec in &pod.spec.containers {
             self.ensure_image(&docker, &container_spec.image).await?;
 
-            let container_name = format!("pod_{}_{}", pod.metadata.user.name, container_spec.name);
+            // build unique name
+            // NOTE: without namespaces or restarts
+            let container_name = format!("r8s_{}_{}", container_spec.name, pod.metadata.user.name);
 
+            // build container config from spec
             let config = Config {
                 image: Some(container_spec.image.clone()),
                 env: container_spec.env.as_ref().map(|envs| {
@@ -135,28 +160,19 @@ impl DockerClient for DockerManager {
                 platform: None,
             });
 
-            let create_response = docker
+            // create and start container
+            let container_id = docker
                 .create_container(options, config)
                 .await
-                .map_err(|e| DockerError::ContainerCreationError(e.to_string()))?;
-
-            let container_id = create_response.id;
+                .map_err(|e| DockerError::ContainerCreationError(e.to_string()))?
+                .id;
 
             docker
                 .start_container(&container_id, None::<StartContainerOptions<String>>)
                 .await
                 .map_err(|e| DockerError::ContainerStartError(e.to_string()))?;
 
-            let inspection = docker
-                .inspect_container(&container_id, None::<InspectContainerOptions>)
-                .await
-                .map_err(|e| DockerError::ContainerInspectError(e.to_string()))?;
-
-            let status = inspection
-                .state
-                .as_ref()
-                .and_then(|s| s.status.clone())
-                .unwrap_or_else(|| ContainerStateStatusEnum::EMPTY);
+            let status = self.get_container_status(&container_id).await?;
 
             tracing::debug!(
                 id=%short_id(&container_id),
@@ -175,15 +191,18 @@ impl DockerClient for DockerManager {
             );
         }
 
+        // build final podruntime struct
         Ok(PodRuntime {
             id: pod.id,
             name: pod.metadata.user.name,
             containers: container_runtimes,
         })
     }
+
     async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError> {
         let docker = self.client();
 
+        // stop and remove all containers passing along errors
         for cid in container_ids {
             let id = short_id(cid);
             docker.stop_container(cid, None).await.map_err(|e| {
@@ -191,6 +210,7 @@ impl DockerClient for DockerManager {
                 DockerError::ContainerStopError(e.to_string())
             })?;
             tracing::debug!(id=%id, "Stopped container");
+
             docker.remove_container(cid, None).await.map_err(|e| {
                 tracing::warn!(id=%id, error=%e, "Failed to remove container");
                 DockerError::ContainerRemovalError(e.to_string())
@@ -200,6 +220,7 @@ impl DockerClient for DockerManager {
 
         Ok(())
     }
+
     async fn get_logs(&self, container_id: &str) -> Result<String, DockerError> {
         let docker = self.client();
         let mut logs_stream = docker.logs(
@@ -213,6 +234,7 @@ impl DockerClient for DockerManager {
             }),
         );
 
+        // build log string with basic config
         let mut output = String::new();
         while let Some(chunk) = logs_stream
             .try_next()
@@ -231,6 +253,7 @@ impl DockerClient for DockerManager {
 
         Ok(output)
     }
+
     async fn stream_logs(
         &self,
         id: &str,
@@ -243,9 +266,7 @@ impl DockerClient for DockerManager {
                 follow: true,
                 stdout: true,
                 stderr: true,
-                timestamps: false,
                 tail: "all".to_string(),
-                since: 0,
                 ..Default::default()
             }),
         );
@@ -254,10 +275,10 @@ impl DockerClient for DockerManager {
             while let Some(item) = logs_stream.next().await {
                 match item {
                     Ok(LogOutput::StdOut { message })
-                        | Ok(LogOutput::StdErr { message })
-                        | Ok(LogOutput::Console { message }) => {
-                            yield Ok(message);
-                        }
+                    | Ok(LogOutput::StdErr { message })
+                    | Ok(LogOutput::Console { message }) => {
+                        yield Ok(message);
+                    }
                     Ok(_) => continue,
                     Err(e) => {
                         yield Err(DockerError::StreamLogsError(e.to_string()));
