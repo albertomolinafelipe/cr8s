@@ -21,7 +21,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(get))
         .route("/{pod_name}", web::patch().to(update))
         .route("/{pod_name}", web::delete().to(delete))
-        .route("/{pod_name}/status", web::patch().to(status))
         .route("/{pod_name}/logs", web::get().to(logs))
         .route("", web::post().to(create));
 }
@@ -84,25 +83,62 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
     }
 }
 
-/// Update the status of a specific pod.
+/// Update pod fields like node assignment.
 ///
 /// # Arguments
 /// - `path_string`: Pod name from URL path.
-/// - `body`: Pod status update JSON.
+/// - `body`: pod patch
+///    - `pod_field` (Enum): node name, status, spec
+///    - `value` (Deserializable): value to update
 ///
 /// # Returns
-/// - 200: Status updated.
-/// - 401: Pod is not assigned to node making call
-/// - 403: Node name not registered in system
 /// - 404: Pod not found.
-async fn status(
+/// - Node Name
+///     - 204: Patch applied
+///     - 422: no node with given name
+///     - 409: pod already assigned to a node
+/// - Pod Status
+///     - 200: Status updated.
+///     - 401: Pod is not assigned to node making call
+///     - 403: Node name not registered in system
+/// - Pod Spec
+///     - 501
+async fn update(
     state: State,
     path_string: web::Path<String>,
-    body: web::Json<PodStatusUpdate>,
+    body: web::Json<PodPatch>,
 ) -> impl Responder {
-    let mut status_update = body.into_inner();
+    let patch = body.into_inner();
     let pod_name = path_string.into_inner();
 
+    match patch.pod_field {
+        PodField::NodeName => match patch.value.as_str() {
+            Some(node_name) => match state.assign_pod(&pod_name, node_name.to_string()).await {
+                Ok(_) => HttpResponse::NoContent().finish(),
+                Err(err) => {
+                    tracing::warn!(error = %err, "Could not schedule pod");
+                    err.to_http_response()
+                }
+            },
+            None => HttpResponse::BadRequest().body("Expected string for node name"),
+        },
+        PodField::Status => {
+            let parsed: Result<PodStatusUpdate, _> = serde_json::from_value(patch.value);
+            match parsed {
+                Ok(status_update) => update_status(state, pod_name, status_update).await,
+                Err(_) => HttpResponse::BadRequest().body("Invalid status format"),
+            }
+        }
+        PodField::Spec => HttpResponse::NotImplemented().finish(),
+    }
+}
+
+/// Update the status of a specific pod.
+async fn update_status(
+    state: State,
+    pod_name: String,
+    mut status_update: PodStatusUpdate,
+) -> HttpResponse {
     // Check pod name exists
     let Some(pod_id) = state.cache.get_pod_id(&pod_name) else {
         return HttpResponse::NotFound().finish();
@@ -147,36 +183,6 @@ async fn status(
             );
             err.to_http_response()
         }
-    }
-}
-
-/// Update pod fields like node assignment.
-///
-/// # Arguments
-/// - `path_string`: Pod name from URL path.
-/// - `body`: Patch JSON.
-///
-/// # Returns
-/// - 204: Patch applied.
-async fn update(
-    state: State,
-    path_string: web::Path<String>,
-    body: web::Json<PodPatch>,
-) -> impl Responder {
-    let patch = body.into_inner();
-    let pod_name = path_string.into_inner();
-    match patch.pod_field {
-        PodField::NodeName => match state.assign_pod(&pod_name, patch.value.clone()).await {
-            Ok(_) => HttpResponse::NoContent().finish(),
-            Err(err) => {
-                tracing::warn!(
-                    error=%err,
-                    "Could not schedule pod"
-                );
-                err.to_http_response()
-            }
-        },
-        PodField::Spec => HttpResponse::NotImplemented().finish(),
     }
 }
 
@@ -344,18 +350,17 @@ mod tests {
     //!  - test_get_pods_watch
     //!         pods added before and after watch call, assigned and unassigned
     //!
-    //!  STATUS
-    //!  - test_update_pod_status
-    //!  - test_update_pod_status_pod_name_not_found
-    //!  - test_update_pod_status_node_not_found
-    //!  - test_update_pod_status_not_assigned_to_caller
-    //!
-    //!
     //!  PATCH POD
     //!  - test_assign_pod
     //!  - test_assign_pod_invalid_node_name
     //!  - test_assign_pod_not_found
     //!  - test_assign_pod_already_assigned
+    //!
+    //!  - test_update_pod_status
+    //!  - test_update_pod_status_pod_name_not_found
+    //!  - test_update_pod_status_node_not_found
+    //!  - test_update_pod_status_not_assigned_to_caller
+    //!
     //!  - test_update_pod_spec
     //!
     //!  CREATE
@@ -378,6 +383,7 @@ mod tests {
         http::StatusCode,
         test::{self, TestRequest, call_service, init_service, read_body_json},
     };
+    use serde_json::Value;
     use shared::models::{ContainerSpec, Node, PodObject, PodSpec, PodStatus, UserMetadata};
 
     async fn pod_service(
@@ -391,11 +397,10 @@ mod tests {
             App::new()
                 .app_data(state.clone())
                 .route("/pods", web::get().to(get))
+                .route("/pods", web::post().to(create))
                 .route("/pods/{pod_name}", web::patch().to(update))
                 .route("/pods/{pod_name}", web::delete().to(delete))
-                .route("/pods/{pod_name}/status", web::patch().to(status))
-                .route("/{pod_name}/logs", web::get().to(logs))
-                .route("/pods", web::post().to(create)),
+                .route("/pods/{pod_name}/logs", web::get().to(logs)),
         )
         .await
     }
@@ -415,6 +420,8 @@ mod tests {
         assert!(state.add_pod(spec, metadata.clone()).await.is_ok());
         return metadata.name;
     }
+
+    // --- Get tests ---
 
     #[actix_web::test]
     async fn test_get_pods_query() {
@@ -471,6 +478,8 @@ mod tests {
         assert_eq!(events[0].pod.node_name, "");
     }
 
+    // --- Patch Status ---
+
     #[actix_web::test]
     async fn test_update_pod_status() {
         let state = new_state_with_store(Box::new(TestStore::new())).await;
@@ -478,13 +487,17 @@ mod tests {
 
         let app = pod_service(&state).await;
 
-        let payload = PodStatusUpdate {
+        let update = PodStatusUpdate {
             node_name,
             status: PodStatus::Running,
             container_statuses: vec![],
         };
+        let payload = PodPatch {
+            pod_field: PodField::Status,
+            value: serde_json::to_value(update).expect("could not serialize"),
+        };
         let req = TestRequest::patch()
-            .uri(&format!("/pods/{}/status", pod_name))
+            .uri(&format!("/pods/{}", pod_name))
             .set_json(payload)
             .to_request();
         let res = call_service(&app, req).await;
@@ -499,13 +512,17 @@ mod tests {
 
         let app = pod_service(&state).await;
 
-        let payload = PodStatusUpdate {
+        let update = PodStatusUpdate {
             node_name: n.name,
             status: PodStatus::Running,
             container_statuses: vec![],
         };
+        let payload = PodPatch {
+            pod_field: PodField::Status,
+            value: serde_json::to_value(update).expect("could not serialize"),
+        };
         let req = TestRequest::patch()
-            .uri("/pods/made-up/status")
+            .uri("/pods/made-up")
             .set_json(payload)
             .to_request();
         let res = call_service(&app, req).await;
@@ -518,13 +535,17 @@ mod tests {
         let pod_name = add_pod(&state).await;
         let app = pod_service(&state).await;
 
-        let payload = PodStatusUpdate {
+        let update = PodStatusUpdate {
             node_name: "made up".to_string(),
             status: PodStatus::Running,
             container_statuses: vec![],
         };
+        let payload = PodPatch {
+            pod_field: PodField::Status,
+            value: serde_json::to_value(update).expect("could not serialize"),
+        };
         let req = TestRequest::patch()
-            .uri(&format!("/pods/{}/status", pod_name))
+            .uri(&format!("/pods/{}", pod_name))
             .set_json(payload)
             .to_request();
         let res = call_service(&app, req).await;
@@ -540,18 +561,24 @@ mod tests {
         let pod_name = add_pod(&state).await;
         let app = pod_service(&state).await;
 
-        let payload = PodStatusUpdate {
+        let update = PodStatusUpdate {
             node_name: n.name,
             status: PodStatus::Running,
             container_statuses: vec![],
         };
+        let payload = PodPatch {
+            pod_field: PodField::Status,
+            value: serde_json::to_value(update).expect("could not serialize"),
+        };
         let req = TestRequest::patch()
-            .uri(&format!("/pods/{}/status", pod_name))
+            .uri(&format!("/pods/{}", pod_name))
             .set_json(payload)
             .to_request();
         let res = call_service(&app, req).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
+
+    // --- Patch Assign ---
 
     #[actix_web::test]
     async fn test_assign_pod() {
@@ -564,7 +591,7 @@ mod tests {
         let app = pod_service(&state).await;
         let payload = PodPatch {
             pod_field: PodField::NodeName,
-            value: n.name,
+            value: Value::String(n.name),
         };
         let req = TestRequest::patch()
             .uri(&format!("/pods/{}", pod_name))
@@ -582,7 +609,7 @@ mod tests {
         let app = pod_service(&state).await;
         let payload = PodPatch {
             pod_field: PodField::NodeName,
-            value: "made-up".to_string(),
+            value: Value::String("made-up".to_string()),
         };
         let req = TestRequest::patch()
             .uri(&format!("/pods/{}", pod_name))
@@ -601,7 +628,7 @@ mod tests {
         let app = pod_service(&state).await;
         let payload = PodPatch {
             pod_field: PodField::NodeName,
-            value: n.name,
+            value: Value::String(n.name),
         };
         let req = TestRequest::patch()
             .uri("/pods/made-up")
@@ -619,7 +646,7 @@ mod tests {
         let app = pod_service(&state).await;
         let payload = PodPatch {
             pod_field: PodField::NodeName,
-            value: node_name,
+            value: Value::String(node_name),
         };
         let req = TestRequest::patch()
             .uri(&format!("/pods/{}", pod_name))
@@ -629,6 +656,8 @@ mod tests {
         assert_eq!(res.status(), StatusCode::CONFLICT);
     }
 
+    // --- Patch Pod Spec ---
+
     #[actix_web::test]
     async fn test_update_pod_spec() {
         let state = new_state_with_store(Box::new(TestStore::new())).await;
@@ -637,7 +666,7 @@ mod tests {
         let app = pod_service(&state).await;
         let payload = PodPatch {
             pod_field: PodField::Spec,
-            value: "".to_string(),
+            value: Value::String("".to_string()),
         };
         let req = TestRequest::patch()
             .uri(&format!("/pods/{}", pod_name))
@@ -646,6 +675,8 @@ mod tests {
         let res = call_service(&app, req).await;
         assert_eq!(res.status(), StatusCode::NOT_IMPLEMENTED);
     }
+
+    // --- Create pod ---
 
     #[actix_web::test]
     async fn test_create_pod() {
