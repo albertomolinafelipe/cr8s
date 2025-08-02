@@ -1,3 +1,9 @@
+//! State management for apiserver
+//!
+//! Manage pods and nodes
+//! Provides abstraction for persistent storage and caching layer
+//! Event broadcasting mechanism for notifications on watches
+
 use actix_web::web::Data;
 use chrono::Utc;
 use futures::future::join_all;
@@ -17,6 +23,7 @@ use super::{
     store::{EtcdStore, Store},
 };
 
+/// Initializes a new application state using the default Etcd-backed store.
 pub async fn new_state() -> State {
     let r8s = R8s::new().await;
     Data::new(r8s)
@@ -28,18 +35,34 @@ pub async fn new_state_with_store(store: Box<dyn Store + Send + Sync>) -> State 
     Data::new(r8s)
 }
 
+/// Core with storage, caches, and event channels.
 pub struct R8s {
     store: Box<dyn Store + Send + Sync>,
+    /// Broadcast channel for pod-related events.
     pub pod_tx: broadcast::Sender<PodEvent>,
+    /// Broadcast channel for node-related events.
     pub node_tx: broadcast::Sender<NodeEvent>,
+    /// In-memory fast-access cache for node/pod metadata.
     pub cache: CacheManager,
 }
 
 impl R8s {
-    pub async fn new() -> Self {
+    //! - add_pod(spec, metadata): Validate and add a new pod to the store and cache, then broadcast an event
+    //! - delete_pod(name): Remove a pod the store and cache, then broadcast an event
+    //! - assign_pod(name, node_name): Assign an unassigned pod to a  ode, update store and cache, broadcast event
+    //! - update_pod_status(id, status, cont_status): Update the status and container statuses of a pod
+    //! - get_pods(query): List pods optionally filtered by node name
+    //!
+    //! - add_node(node): Add a new node to the store and cache, then broadcast an event
+    //! - get_nodes(): Retrieve all Nodes from the store
+    //! - get_node(name): Get a specific Node by name from the store
+    //! - update_node_heartbeat(node_name): Update the heartbeat timestamp of a node in the store
+
+    async fn new() -> Self {
         Self::default_with_store(Box::new(EtcdStore::new().await)).await
     }
 
+    /// Constructs a new instance with a custom store implementation.
     async fn default_with_store(store: Box<dyn Store + Send + Sync>) -> Self {
         let (pod_tx, _) = broadcast::channel(10);
         let (node_tx, _) = broadcast::channel(10);
@@ -51,14 +74,12 @@ impl R8s {
         }
     }
 
+    /// Adds a new pod, assigns it a UUID, and emits a PodEvent.
     pub async fn add_pod(&self, spec: PodSpec, user: UserMetadata) -> Result<Uuid, StoreError> {
         // validate spec and name
         validate_pod(&spec)?;
-        (!self.cache.pod_name_exists(&user.name))
-            .then_some(())
-            .ok_or_else(|| StoreError::Conflict("Duplicate pod name".to_string()))?;
 
-        // Since its low level object manifest is not stored
+        // since its low level manifest is not stored
         let pod = PodObject {
             metadata: Metadata {
                 user,
@@ -67,9 +88,12 @@ impl R8s {
             spec,
             ..Default::default()
         };
+
+        // save object and metadata in store and cache
         self.store.put_pod(&pod.id, &pod).await?;
         self.cache.add_pod(&pod.metadata.user.name, pod.id);
 
+        // send event
         let event = PodEvent {
             event_type: EventType::Added,
             pod: pod.clone(),
@@ -78,35 +102,43 @@ impl R8s {
         Ok(pod.id)
     }
 
+    /// Deletes a pod by name and emits a deletion event.
     pub async fn delete_pod(&self, name: &str) -> Result<(), StoreError> {
+        // get pod id
         let id = self
             .cache
             .get_pod_id(name)
             .ok_or_else(|| StoreError::NotFound("Pod not found".to_string()))?;
+        // get object from store
         let pod = self
             .store
             .get_pod(id)
             .await?
             .ok_or_else(|| StoreError::NotFound("Pod not found".to_string()))?;
+
+        // clean store and cache
         self.store.delete_pod(&id).await?;
         self.cache.delete_pod(name);
+
+        // send delete event
         let event = PodEvent {
             event_type: EventType::Deleted,
-            pod: pod,
+            pod,
         };
         let _ = self.pod_tx.send(event);
         Ok(())
     }
 
+    /// Assigns a pod to a node if unassigned and the node exists.
     pub async fn assign_pod(&self, name: &str, node_name: String) -> Result<(), StoreError> {
-        // Check node name exists
+        // check node name exists
         (self.cache.node_name_exists(&node_name))
             .then_some(())
             .ok_or_else(|| {
                 StoreError::InvalidReference(format!("No node exists with name={}", node_name))
             })?;
 
-        // Check pod name exists and its in the unassigned set
+        // check pod name exists and its in unassigned set
         let Some(pod_id) = self.cache.get_pod_id(name) else {
             return Err(StoreError::NotFound(format!(
                 "No pod exists with name={}",
@@ -114,16 +146,13 @@ impl R8s {
             )));
         };
 
-        let Some(unassigned_entry) = self.cache.get_pod_ids("") else {
-            return Err(StoreError::Conflict("Unassigned set not found".to_string()));
-        };
-
-        // Check pod is unassigned
+        // check pod is unassigned
         let mut pod = self
             .store
             .get_pod(pod_id.clone())
             .await?
             .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
+
         if !pod.node_name.is_empty() {
             return Err(StoreError::Conflict(format!(
                 "Pod ({}) is already assigned to a node",
@@ -131,21 +160,23 @@ impl R8s {
             )));
         }
 
-        // Assign and insert pod
+        // assign ad store node
         pod.node_name = node_name.clone();
         self.store.put_pod(&pod.id, &pod).await?;
 
-        // Update indeces
-        unassigned_entry.remove(&pod_id);
+        // update cache, move from unassigned to node
         self.cache.assign_pod(name, &pod_id, &node_name);
+
+        // send event
         let event = PodEvent {
             event_type: EventType::Modified,
-            pod: pod.clone(),
+            pod,
         };
         let _ = self.pod_tx.send(event);
         Ok(())
     }
 
+    /// Updates the runtime status of a pod, including container statuses.
     pub async fn update_pod_status(
         &self,
         id: Uuid,
@@ -156,7 +187,8 @@ impl R8s {
             .store
             .get_pod(id)
             .await?
-            .ok_or(StoreError::NotFound("Node not found in store".to_string()))?;
+            .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
+
         validate_container_statuses(&pod.spec, container_statuses);
         pod.last_status_update = Some(Utc::now());
         pod.pod_status = status;
@@ -165,6 +197,7 @@ impl R8s {
         Ok(())
     }
 
+    /// Retrieves all pods, or only those scheduled on a specific node.
     pub async fn get_pods(&self, query: Option<String>) -> Vec<PodObject> {
         match query {
             Some(node_name) => {
@@ -187,18 +220,13 @@ impl R8s {
         }
     }
 
+    /// Adds a new node
     pub async fn add_node(&self, node: &Node) -> Result<(), StoreError> {
-        (!node.name.is_empty())
-            .then_some(())
-            .ok_or_else(|| StoreError::WrongFormat("Node name is empty".to_string()))?;
-
-        (!self.cache.node_addr_exists(&node.addr) && !self.cache.node_name_exists(&node.name))
-            .then_some(())
-            .ok_or_else(|| StoreError::Conflict("Duplicate node name or address".to_string()))?;
-
+        // store in cache and store
         self.store.put_node(&node.name, node).await?;
         self.cache.add_node(&node.name, &node.addr);
 
+        // send event
         let event = NodeEvent {
             event_type: EventType::Added,
             node: node.clone(),
@@ -207,14 +235,17 @@ impl R8s {
         Ok(())
     }
 
+    /// Retrieves all registered nodes.
     pub async fn get_nodes(&self) -> Vec<Node> {
         self.store.list_nodes().await.unwrap_or_default()
     }
 
+    /// Fetches a single node by name.
     pub async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError> {
         self.store.get_node(name).await
     }
 
+    /// Updates a node's heartbeat timestamp.
     pub async fn update_node_heartbeat(&self, node_name: &str) -> Result<(), StoreError> {
         let mut node = self
             .store
@@ -230,7 +261,7 @@ impl R8s {
     }
 }
 
-/// Check for duplicate container name in spec
+/// Validates pod spec for duplicate container names.
 fn validate_pod(spec: &PodSpec) -> Result<(), StoreError> {
     let mut seen_names = HashSet::new();
 
@@ -246,10 +277,11 @@ fn validate_pod(spec: &PodSpec) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// Cleans up container status list to only include valid container names from spec.
 fn validate_container_statuses(spec: &PodSpec, container_statuses: &mut Vec<(String, String)>) {
     let valid_names: HashSet<_> = spec.containers.iter().map(|c| c.name.clone()).collect();
 
-    // Filter out any entries invalid names, ignore extra names
+    // Filter out invalid entries
     container_statuses.retain(|(name, _)| valid_names.contains(name));
 
     let existing_names: HashSet<_> = container_statuses
@@ -257,6 +289,7 @@ fn validate_container_statuses(spec: &PodSpec, container_statuses: &mut Vec<(Str
         .map(|(name, _)| name.clone())
         .collect();
 
+    // Insert default status for containers not included
     for container in &spec.containers {
         if !existing_names.contains(&container.name) {
             container_statuses.push((container.name.clone(), "EMPTY".to_string()));

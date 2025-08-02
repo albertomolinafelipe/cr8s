@@ -1,3 +1,9 @@
+//! Etcd-backed implementation of the `Store` trait.
+//!
+//! This module provides basic CRUD operations for Pods and Nodes using etcd
+//! as the backend. It serializes and deserializes objects using JSON and
+//! manages key construction using standard prefixes.
+
 use etcd_client::GetOptions;
 use serde::{Serialize, de::DeserializeOwned};
 use shared::models::{Node, PodObject};
@@ -7,6 +13,7 @@ use super::errors::StoreError;
 
 use async_trait::async_trait;
 
+/// Trait for persistent store functionality (e.g., etcd, memory).
 #[async_trait]
 pub trait Store: Send + Sync {
     async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError>;
@@ -19,6 +26,7 @@ pub trait Store: Send + Sync {
     async fn list_nodes(&self) -> Result<Vec<Node>, StoreError>;
 }
 
+/// Etcd-backed store for persisting cluster state
 pub struct EtcdStore {
     etcd: etcd_client::Client,
 }
@@ -26,6 +34,8 @@ pub struct EtcdStore {
 impl EtcdStore {
     const POD_PREFIX: &'static str = "/r8s/pods/";
     const NODE_PREFIX: &'static str = "/r8s/nodes/";
+
+    /// Creates a new EtcdStore instance, connecting to the ETCD_ADDR environment variable.
     pub async fn new() -> Self {
         let etcd_addr =
             std::env::var("ETCD_ADDR").unwrap_or_else(|_| "http://etcd:2379".to_string());
@@ -39,16 +49,17 @@ impl EtcdStore {
     fn pod_prefix() -> &'static str {
         Self::POD_PREFIX
     }
-    fn pod_key(id: &Uuid) -> String {
-        format!("{}{}", Self::POD_PREFIX, id)
-    }
     fn node_prefix() -> &'static str {
         Self::NODE_PREFIX
+    }
+    fn pod_key(id: &Uuid) -> String {
+        format!("{}{}", Self::POD_PREFIX, id)
     }
     fn node_key(name: &str) -> String {
         format!("{}{}", Self::NODE_PREFIX, name)
     }
 
+    /// Deletes an object from etcd by key.
     async fn delete_object(&self, key: &str) -> Result<(), StoreError> {
         self.etcd.clone().delete(key, None).await.map_err(|e| {
             tracing::error!(%key, %e, "Failed to delete key");
@@ -57,6 +68,7 @@ impl EtcdStore {
         Ok(())
     }
 
+    /// Retrieves a single object from etcd and deserializes it.
     async fn get_object<T>(&self, key: &str) -> Result<Option<T>, StoreError>
     where
         T: DeserializeOwned,
@@ -83,6 +95,7 @@ impl EtcdStore {
             .transpose()
     }
 
+    /// Serializes and writes an object to etcd
     async fn put_object<T>(&self, key: &str, value: &T) -> Result<(), StoreError>
     where
         T: Serialize,
@@ -97,12 +110,13 @@ impl EtcdStore {
         Ok(())
     }
 
+    /// Lists all objects stored under a given prefix.
     async fn list_objects<T>(&self, prefix: &str) -> Result<Vec<T>, StoreError>
     where
         T: DeserializeOwned,
     {
         // pretty rust
-        let resp = self
+        Ok(self
             .etcd
             .clone()
             .get(prefix, Some(GetOptions::new().with_prefix()))
@@ -110,15 +124,11 @@ impl EtcdStore {
             .map_err(|error| {
                 tracing::error!(%prefix, %error, "Could not list at");
                 StoreError::BackendError(error.to_string())
-            })?;
-
-        let objs = resp
+            })?
             .kvs()
             .iter()
             .filter_map(|kv| serde_json::from_str::<T>(kv.value_str().ok()?).ok())
-            .collect();
-
-        Ok(objs)
+            .collect())
     }
 }
 

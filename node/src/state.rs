@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use shared::models::PodObject;
 use std::collections::HashMap;
 use std::env;
-use std::sync::RwLock;
 use uuid::Uuid;
 
 use crate::docker::manager::{DockerClient, DockerManager};

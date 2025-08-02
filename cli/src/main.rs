@@ -1,10 +1,13 @@
 use clap::{Parser, Subcommand};
 
-use crate::commands::{
-    create::{CreateArgs, handle_create},
-    delete::{DeleteArgs, handle_delete},
-    get::{GetArgs, handle_get},
-    logs::{LogArgs, handle_logs},
+use crate::{
+    commands::{
+        create::{CreateArgs, handle_create},
+        delete::{DeleteArgs, handle_delete},
+        get::{GetArgs, handle_get},
+        logs::{LogArgs, handle_logs},
+    },
+    config::Config,
 };
 
 mod commands;
@@ -32,7 +35,7 @@ enum Commands {
 
 fn main() {
     let cli = R8sCtl::parse();
-    let config = config::load_config();
+    let config = Config::from_env();
 
     match cli.command {
         Commands::Get(args) => handle_get(&config, &args),
