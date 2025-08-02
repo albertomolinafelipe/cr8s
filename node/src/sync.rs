@@ -8,7 +8,10 @@ use std::time::Duration;
 
 use bollard::secret::ContainerStateStatusEnum;
 use reqwest::Client;
-use shared::{api::PodStatusUpdate, models::PodStatus};
+use shared::{
+    api::{PodField, PodPatch, PodStatusUpdate},
+    models::PodStatus,
+};
 use tokio::time;
 
 use crate::state::State;
@@ -53,21 +56,27 @@ pub async fn run(state: State) -> Result<(), String> {
             }
 
             // Build and send status update to control plane
-            let update = PodStatusUpdate {
+            // Build and send status update to control plane
+            let Ok(update) = serde_json::to_value(PodStatusUpdate {
                 status: pod_status,
                 container_statuses: container_statuses_for_update,
                 node_name: state.config.name.clone(),
+            }) else {
+                continue;
+            };
+            let payload = PodPatch {
+                pod_field: PodField::Status,
+                value: update,
             };
 
-            let response = client
+            if let Err(err) = client
                 .patch(format!("{}/pods/{}", state.config.server_url, p.name))
-                .json(&update)
+                .json(&payload)
                 .send()
-                .await;
-
-            if let Err(err) = response {
+                .await
+            {
                 tracing::warn!(error=%err, "Status update failed");
-            }
+            };
         }
     }
 }
