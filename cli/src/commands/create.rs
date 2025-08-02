@@ -44,7 +44,7 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
         }
     };
 
-    // send each manigest to the specified resource endpoint
+    // send each manifest to the specified resource endpoint
     let client = Client::new();
     for object in docs {
         let url = format!("{}/{}s", config.url, object.spec);
