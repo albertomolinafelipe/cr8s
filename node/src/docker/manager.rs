@@ -5,8 +5,8 @@
 //! create, start, stop containers, and retrieve logs.
 
 use crate::{
-    docker::DockerError,
-    state::{ContainerRuntime, PodRuntime},
+    docker::errors::DockerError,
+    models::{ContainerRuntime, PodRuntime},
 };
 use async_trait::async_trait;
 use bollard::{

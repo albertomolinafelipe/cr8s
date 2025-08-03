@@ -4,7 +4,7 @@
 //! events via a streaming HTTP API. It updates local state and dispatches work to the worker
 //! subsystem via a channel.
 
-use crate::WorkRequest;
+use crate::models::WorkRequest;
 use crate::state::State;
 use futures_util::TryStreamExt;
 use reqwest::Client;

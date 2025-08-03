@@ -1,37 +1,33 @@
 //! # Node State Management
 //!
 //! This module defines the in-memory state of a node in the cluster
-//! Including its confi, known pods, runtime container info and docker
+//! Including its config, known pods, runtime container info and docker
 
-use actix_web::web;
-use bollard::secret::ContainerStateStatusEnum;
+use actix_web::web::Data;
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 use shared::models::PodObject;
-use std::collections::HashMap;
-use std::env;
 use uuid::Uuid;
 
-use crate::docker::manager::{DockerClient, DockerManager};
+use crate::{
+    docker::manager::{DockerClient, DockerManager},
+    models::{Config, PodRuntime},
+};
 
 /// Thread safe wrapper
-pub type State = web::Data<NodeState>;
+pub type State = Data<NodeState>;
 
-/// Runtime information for a pod
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PodRuntime {
-    pub id: Uuid,
-    pub name: String,
-    pub containers: HashMap<String, ContainerRuntime>,
+pub async fn new_state() -> State {
+    let docker_mgr = Box::new(
+        DockerManager::start()
+            .inspect_err(|err| tracing::error!(error=%err, "Failed to start docker manager"))
+            .expect(""),
+    );
+    Data::new(NodeState::default_with_docker(docker_mgr).await)
 }
 
-/// Runtime information for a container
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContainerRuntime {
-    pub id: String,
-    pub spec_name: String,
-    pub name: String,
-    pub status: ContainerStateStatusEnum,
+#[cfg(test)]
+pub async fn new_state_with_docker(docker: Box<dyn DockerClient + Send + Sync>) -> State {
+    Data::new(NodeState::default_with_docker(docker).await)
 }
 
 /// Global in-memory state for a single node.
@@ -44,15 +40,10 @@ pub struct NodeState {
 
 impl NodeState {
     /// Initializes a new [`NodeState`] instance, loading config and starting Docker manager.
-    pub fn new() -> Self {
-        let docker_mgr = Box::new(
-            DockerManager::start()
-                .inspect_err(|err| tracing::error!(error=%err, "Failed to start docker manager"))
-                .expect(""),
-        );
+    async fn default_with_docker(docker: Box<dyn DockerClient + Send + Sync>) -> Self {
         Self {
-            config: load_config(),
-            docker_mgr,
+            config: Config::from_env(),
+            docker_mgr: docker,
             pods: DashMap::new(),
             pod_runtimes: DashMap::new(),
         }
@@ -73,14 +64,6 @@ impl NodeState {
         self.pod_runtimes
             .iter()
             .map(|entry| entry.value().clone())
-            .collect()
-    }
-
-    /// Returns a list of all pod names currently registered.
-    pub fn get_pod_names(&self) -> Vec<String> {
-        self.pods
-            .iter()
-            .map(|p| p.metadata.user.name.clone())
             .collect()
     }
 
@@ -109,60 +92,5 @@ impl NodeState {
         }
         self.pod_runtimes.insert(pod_runtime.id, pod_runtime);
         Ok(())
-    }
-}
-
-/// Node configuration loaded from environment variables.
-#[derive(Debug)]
-pub struct Config {
-    pub server_url: String,
-    pub port: u16,
-    pub name: String,
-    pub register_retries: u16,
-    pub node_api_workers: usize,
-    pub sync_loop: u16,
-}
-
-/// Loads node configuration from environment variables.
-///
-/// Falls back to defaults when applicable.
-/// Panics if `NODE_PORT` is missing or invalid.
-fn load_config() -> Config {
-    let server_address = env::var("R8S_SERVER_HOST").unwrap_or_else(|_| "localhost".to_string());
-
-    let server_port = env::var("R8S_SERVER_PORT")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(7620);
-
-    let port = env::var("NODE_PORT")
-        .expect("NODE_PORT environment variable is required")
-        .parse()
-        .expect("NODE_PORT must be a valid number");
-
-    let sync_loop = env::var("SYNC_LOOP_INTERVAL")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(15);
-
-    let name = env::var("NODE_NAME").unwrap_or_else(|_| format!("worker-node-{}", port));
-
-    let register_retries = env::var("NODE_REGISTER_RETRIES")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(3);
-
-    let node_api_workers = env::var("NODE_API_WORKERS")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(2);
-
-    Config {
-        server_url: format!("http://{}:{}", server_address, server_port),
-        port,
-        name,
-        sync_loop,
-        register_retries,
-        node_api_workers,
     }
 }

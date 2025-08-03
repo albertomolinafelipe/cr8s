@@ -1,12 +1,8 @@
 [package]
-name = "cli"
+name = "r8sctl"
 version = "0.1.0"
 edition = "2024"
 description = "Command line tool to interact with the apiserver"
-
-[[bin]]
-path = "src/main.rs"
-name = "r8sctl"
 
 [dependencies]
 shared = { path = "../shared" }

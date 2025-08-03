@@ -13,4 +13,4 @@ if [ ! -S /var/run/docker.sock ]; then
   exit 1
 fi
 
-exec /usr/local/bin/node
+exec /usr/local/bin/r8sagt

@@ -6,27 +6,18 @@
 //!
 //! Each subsystem communicates via a shared application state and message channels.
 
-use actix_web::web;
-use shared::api::EventType;
+use r8sagt::{
+    api,
+    core::{controller, sync, worker},
+    models::WorkRequest,
+    state::new_state,
+};
 use tokio::sync::mpsc;
 use tracing_subscriber::{self, EnvFilter};
-use uuid::Uuid;
-
-mod api;
-mod controller;
-pub mod docker;
-pub mod state;
-mod sync;
-mod worker;
-
-struct WorkRequest {
-    id: Uuid,
-    event: EventType,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let state = web::Data::new(state::NodeState::new());
+    let state = new_state().await;
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,node=trace"));

@@ -3,7 +3,7 @@
 //! Handles `WorkRequest`s from the controller.
 //! Each work item triggers reconciliation logic for a pod
 
-use crate::{WorkRequest, state::State};
+use crate::{models::WorkRequest, state::State};
 use bollard::secret::ContainerStateStatusEnum;
 use shared::api::EventType;
 use tokio::sync::mpsc::Receiver;

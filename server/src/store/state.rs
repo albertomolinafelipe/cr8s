@@ -25,14 +25,12 @@ use super::{
 
 /// Initializes a new application state using the default Etcd-backed store.
 pub async fn new_state() -> State {
-    let r8s = R8s::new().await;
-    Data::new(r8s)
+    Data::new(R8s::default_with_store(Box::new(EtcdStore::new().await)).await)
 }
 
 #[cfg(test)]
 pub async fn new_state_with_store(store: Box<dyn Store + Send + Sync>) -> State {
-    let r8s = R8s::default_with_store(store).await;
-    Data::new(r8s)
+    Data::new(R8s::default_with_store(store).await)
 }
 
 /// Core with storage, caches, and event channels.
@@ -57,10 +55,6 @@ impl R8s {
     //! - get_nodes(): Retrieve all Nodes from the store
     //! - get_node(name): Get a specific Node by name from the store
     //! - update_node_heartbeat(node_name): Update the heartbeat timestamp of a node in the store
-
-    async fn new() -> Self {
-        Self::default_with_store(Box::new(EtcdStore::new().await)).await
-    }
 
     /// Constructs a new instance with a custom store implementation.
     async fn default_with_store(store: Box<dyn Store + Send + Sync>) -> Self {

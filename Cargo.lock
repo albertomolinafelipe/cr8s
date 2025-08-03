@@ -604,21 +604,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 
 [[package]]
-name = "cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "erased-serde",
- "futures-util",
- "reqwest",
- "serde",
- "serde_yaml",
- "shared",
- "tabled",
- "tokio",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1572,29 +1557,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
-name = "node"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "async-stream",
- "async-trait",
- "bollard",
- "bytes",
- "chrono",
- "dashmap",
- "futures-util",
- "reqwest",
- "serde",
- "serde_json",
- "shared",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "nu-ansi-term"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1930,6 +1892,71 @@ name = "r-efi"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
+
+[[package]]
+name = "r8sagt"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "async-stream",
+ "async-trait",
+ "bollard",
+ "bytes",
+ "chrono",
+ "dashmap",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "r8scp"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-web",
+ "async-stream",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "dashmap",
+ "etcd-client",
+ "futures",
+ "futures-util",
+ "rand 0.9.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
+name = "r8sctl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "erased-serde",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_yaml",
+ "shared",
+ "tabled",
+ "tokio",
+]
 
 [[package]]
 name = "rand"
@@ -2301,33 +2328,6 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
-]
-
-[[package]]
-name = "server"
-version = "0.1.0"
-dependencies = [
- "actix-http",
- "actix-web",
- "async-stream",
- "async-trait",
- "bytes",
- "chrono",
- "dashmap",
- "etcd-client",
- "futures",
- "futures-util",
- "rand 0.9.1",
- "reqwest",
- "serde",
- "serde_json",
- "shared",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wiremock",
 ]
 
 [[package]]
