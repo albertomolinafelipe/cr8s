@@ -49,45 +49,62 @@ impl Config {
     /// Loads node configuration from environment variables.
     ///
     /// Falls back to defaults when applicable.
-    /// Panics if `NODE_PORT` is missing or invalid.
     pub fn from_env() -> Self {
-        let server_address =
-            env::var("R8S_SERVER_HOST").unwrap_or_else(|_| "localhost".to_string());
+        let mut config = Config::default();
 
-        let server_port = env::var("R8S_SERVER_PORT")
+        if let Ok(addr) = env::var("R8S_SERVER_HOST") {
+            let port = env::var("R8S_SERVER_PORT")
+                .ok()
+                .and_then(|s| s.parse::<u16>().ok())
+                .unwrap_or(7620);
+            config.server_url = format!("http://{}:{}", addr, port);
+        }
+
+        if let Some(p) = env::var("NODE_PORT")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(7620);
+        {
+            config.port = p;
+        }
 
-        let port = env::var("NODE_PORT")
-            .expect("NODE_PORT environment variable is required")
-            .parse()
-            .expect("NODE_PORT must be a valid number");
+        config.name =
+            env::var("NODE_NAME").unwrap_or_else(|_| format!("worker-node-{}", config.port));
 
-        let sync_loop = env::var("SYNC_LOOP_INTERVAL")
+        if let Some(val) = env::var("SYNC_LOOP_INTERVAL")
             .ok()
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(15);
+            .and_then(|s| s.parse().ok())
+        {
+            config.sync_loop = val;
+        }
 
-        let name = env::var("NODE_NAME").unwrap_or_else(|_| format!("worker-node-{}", port));
-
-        let register_retries = env::var("NODE_REGISTER_RETRIES")
+        if let Some(val) = env::var("NODE_REGISTER_RETRIES")
             .ok()
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(3);
+            .and_then(|s| s.parse().ok())
+        {
+            config.register_retries = val;
+        }
 
-        let node_api_workers = env::var("NODE_API_WORKERS")
+        if let Some(val) = env::var("NODE_API_WORKERS")
             .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(2);
+            .and_then(|s| s.parse().ok())
+        {
+            config.node_api_workers = val;
+        }
 
-        Config {
-            server_url: format!("http://{}:{}", server_address, server_port),
+        config
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        let port = 7621;
+        Self {
+            server_url: "http://localhost:7620".to_string(),
             port,
-            name,
-            sync_loop,
-            register_retries,
-            node_api_workers,
+            name: format!("worker-node-{}", port),
+            sync_loop: 15,
+            register_retries: 3,
+            node_api_workers: 2,
         }
     }
 }

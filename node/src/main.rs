@@ -17,7 +17,7 @@ use tracing_subscriber::{self, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let state = new_state().await;
+    let state = new_state();
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,node=trace"));

@@ -34,3 +34,8 @@ bytes = "1.10.1"
 
 # Docker client
 bollard = "0.18"
+
+[dev-dependencies]
+# mocking control plane api server
+wiremock = "0.6"
+actix-http = "3.11.0"

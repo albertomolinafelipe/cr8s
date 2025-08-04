@@ -21,45 +21,47 @@ use crate::state::State;
 pub async fn run(state: State) -> Result<(), String> {
     tracing::info!(sync=%state.config.sync_loop, "Starting sync loop");
     let mut interval = time::interval(Duration::from_secs(state.config.sync_loop.into()));
-    let client = Client::new();
     loop {
         interval.tick().await;
-        for p in state.list_pod_runtimes().iter() {
-            let mut container_statuses: Vec<(String, String)> = Vec::new();
-            let mut pod_status = PodStatus::Running;
-            for c in p.containers.values() {
-                let status = state.docker_mgr.get_container_status(&c.id).await;
-                match status {
-                    Ok(s) => {
-                        // build array of status
-                        // get simplified aggregate pod status
-                        container_statuses.push((c.spec_name.clone(), s.to_string()));
-                        if s != ContainerStateStatusEnum::RUNNING {
-                            pod_status = PodStatus::Succeeded;
-                        }
-                    }
-                    Err(e) => tracing::error!(error=%e, "Failed to get container status"),
-                }
-            }
-            // build response
-            let update = PodStatusUpdate {
-                status: pod_status,
-                container_statuses,
-                node_name: state.config.name.clone(),
-            };
-            let response = client
-                .patch(format!(
-                    "{}/pods/{}/status",
-                    state.config.server_url, p.name
-                ))
-                .json(&update)
-                .send()
-                .await;
+        run_iteration(&state).await?;
+    }
+}
 
-            match response {
-                Ok(_) => {}
-                Err(err) => tracing::warn!(error=%err, "Status update failed"),
+pub async fn run_iteration(state: &State) -> Result<(), String> {
+    let client = Client::new();
+    for p in state.list_pod_runtimes().iter() {
+        let mut container_statuses: Vec<(String, String)> = Vec::new();
+        let mut pod_status = PodStatus::Running;
+
+        for c in p.containers.values() {
+            match state.docker_mgr.get_container_status(&c.id).await {
+                Ok(s) => {
+                    container_statuses.push((c.spec_name.clone(), s.to_string()));
+                    if s != ContainerStateStatusEnum::RUNNING {
+                        pod_status = PodStatus::Succeeded;
+                    }
+                }
+                Err(e) => tracing::error!(error=%e, "Failed to get container status"),
             }
         }
+
+        let update = PodStatusUpdate {
+            status: pod_status,
+            container_statuses,
+            node_name: state.config.name.clone(),
+        };
+
+        if let Err(err) = client
+            .patch(format!(
+                "{}/pods/{}/status",
+                state.config.server_url, p.name
+            ))
+            .json(&update)
+            .send()
+            .await
+        {
+            tracing::warn!(error=%err, "Status update failed");
+        }
     }
+    Ok(())
 }

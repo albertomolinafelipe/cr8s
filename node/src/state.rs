@@ -16,18 +16,15 @@ use crate::{
 /// Thread safe wrapper
 pub type State = Data<NodeState>;
 
-pub async fn new_state() -> State {
-    let docker_mgr = Box::new(
-        DockerManager::start()
-            .inspect_err(|err| tracing::error!(error=%err, "Failed to start docker manager"))
-            .expect(""),
-    );
-    Data::new(NodeState::default_with_docker(docker_mgr).await)
+pub fn new_state() -> State {
+    Data::new(NodeState::new(None, None))
 }
 
-#[cfg(test)]
-pub async fn new_state_with_docker(docker: Box<dyn DockerClient + Send + Sync>) -> State {
-    Data::new(NodeState::default_with_docker(docker).await)
+pub fn new_state_with(
+    config_in: Option<Config>,
+    docker_in: Option<Box<dyn DockerClient + Send + Sync>>,
+) -> State {
+    Data::new(NodeState::new(config_in, docker_in))
 }
 
 /// Global in-memory state for a single node.
@@ -40,10 +37,25 @@ pub struct NodeState {
 
 impl NodeState {
     /// Initializes a new [`NodeState`] instance, loading config and starting Docker manager.
-    async fn default_with_docker(docker: Box<dyn DockerClient + Send + Sync>) -> Self {
+    fn new(
+        config_in: Option<Config>,
+        docker_in: Option<Box<dyn DockerClient + Send + Sync>>,
+    ) -> Self {
+        let docker_mgr = docker_in.unwrap_or_else(|| {
+            Box::new(
+                DockerManager::start()
+                    .inspect_err(
+                        |err| tracing::error!(error = %err, "Failed to start docker manager"),
+                    )
+                    .expect("Docker manager failed to start"),
+            )
+        });
+
+        let config = config_in.unwrap_or_else(Config::from_env);
+
         Self {
-            config: Config::from_env(),
-            docker_mgr: docker,
+            config,
+            docker_mgr,
             pods: DashMap::new(),
             pod_runtimes: DashMap::new(),
         }
