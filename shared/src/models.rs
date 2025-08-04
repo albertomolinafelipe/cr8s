@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// --- Pod Object and Spec ---
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PodObject {
     pub id: Uuid,
@@ -42,7 +44,9 @@ pub struct Port {
     pub container_port: u16,
 }
 
-/// Metadata for any top-level object, includes at least a name.
+// --- Metadata ---
+
+/// User specied metadata
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UserMetadata {
     pub name: String,
@@ -57,6 +61,8 @@ pub struct Metadata {
     pub user: UserMetadata,
 }
 
+// --- Node ---
+
 /// Represents a node in the cluster.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Node {
@@ -67,6 +73,8 @@ pub struct Node {
     pub started_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
 }
+
+// --- Node and Pod Status ---
 
 /// Status of a node in the cluster.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -84,6 +92,8 @@ pub enum PodStatus {
     Succeeded,
     Unknown,
 }
+
+// --- Default implementations ---
 
 impl Default for Metadata {
     fn default() -> Self {

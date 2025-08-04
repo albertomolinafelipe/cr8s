@@ -83,6 +83,15 @@ fn handle_event(state: State, event: PodEvent, tx: &Sender<WorkRequest>) {
 
 #[cfg(test)]
 mod tests {
+
+    //! - test_modified_event
+    //!     only support when its a new pod
+    //!     send message, insert pod in system
+    //! - test_deleted_event
+    //!     send message and delete pod
+    //! - test_added_event
+    //!     not supported
+
     use super::*;
     use crate::{docker::test::TestDocker, models::Config, state::new_state_with};
     use shared::{

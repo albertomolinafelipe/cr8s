@@ -19,7 +19,6 @@ pub struct CreateArgs {
     pub file: String,
 }
 
-/// Handles the `create` command:
 /// Reads a YAML file, parses objects, and posts them to the configured server.
 #[tokio::main]
 pub async fn handle_create(config: &Config, args: &CreateArgs) {
@@ -32,7 +31,8 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
         }
     };
 
-    // parse each object into manifests
+    // parse each object into generic manifests
+    // server will serialize into specific manifest depending on endpoint
     let docs: Vec<GenericManifest> = match serde_yaml::Deserializer::from_str(&content)
         .map(|doc| serde_yaml::from_value(serde_yaml::Value::deserialize(doc).unwrap()))
         .collect::<Result<_, _>>()

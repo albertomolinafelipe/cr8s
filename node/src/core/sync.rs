@@ -31,8 +31,8 @@ pub async fn run(state: State) -> Result<(), String> {
 pub async fn run_iteration(state: &State) -> Result<(), String> {
     let client = Client::new();
     for p in state.list_pod_runtimes().iter() {
+        // Get map of container statuses
         let mut container_statuses_map: HashMap<String, ContainerStateStatusEnum> = HashMap::new();
-
         for c in p.containers.values() {
             match state.docker_mgr.get_container_status(&c.id).await {
                 Ok(s) => {
@@ -84,7 +84,7 @@ pub async fn run_iteration(state: &State) -> Result<(), String> {
 mod tests {
 
     //! - test_sync_no_pods, no pods to report
-    //! - test_sync_loop, should
+    //! - test_sync_loop,
     //!     call docker api
     //!     update node state
     //!     send call to server

@@ -91,13 +91,23 @@ async fn delete(state: State, id: Uuid) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
-    use shared::models::PodObject;
-
-    use crate::{docker::test::TestDocker, models::PodRuntime, state::new_state_with};
+    //! - test_reconciliate_existing_runtime
+    //!     not supported, should skip
+    //! - test_reconciliate_non_existent_pod
+    //!     should skip
+    //! - test_reconciliate_new_runtime
+    //!     start pod and insert runtime
+    //!     
+    //! - test_delete_runtime_not_found
+    //!     should skip
+    //! - test_delete
+    //!     stop pod and delete runtime
 
     use super::*;
+    use crate::{docker::test::TestDocker, models::PodRuntime, state::new_state_with};
+    use shared::models::PodObject;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_reconciliate_non_existent_pod() {

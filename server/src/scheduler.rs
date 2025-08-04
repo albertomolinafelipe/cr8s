@@ -15,8 +15,10 @@ use uuid::Uuid;
 
 type State = Arc<SchedulerState>;
 
+/// One thread watches unassigned pods, another node events
+/// They spawn task to schedule the unassigned pods
 pub async fn run() {
-    tracing::debug!("Initializing scheduler ");
+    tracing::debug!("Initializing");
     let (tx, mut rx) = mpsc::channel::<Uuid>(100);
     let state = Arc::new(SchedulerState::new(tx, None));
 
@@ -44,6 +46,7 @@ struct SchedulerState {
     pod_tx: Sender<Uuid>,
     /// optional apiserver attribute for mock test
     /// otherwise we use hardcoded value
+    /// should be read from env, but idc
     api_server: Option<String>,
 }
 
@@ -192,17 +195,23 @@ mod tests {
     use wiremock::matchers::{method, path_regex};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    async fn start_mock_server() -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path_regex(r"^/pods/[^/]+/status$"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        server
+    }
+
     #[tokio::test]
     async fn test_handle_pod_event_schedule_pod() {
         // Setup state and mocked patch endpoint
         let (tx, mut rx) = mpsc::channel(10);
-        let mock_server = MockServer::start().await;
-        Mock::given(method("PATCH"))
-            .and(path_regex(r"^/pods/.*$"))
-            .respond_with(ResponseTemplate::new(200))
-            .mount(&mock_server)
-            .await;
-
+        let mock_server = start_mock_server().await;
         let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
         let pod = PodObject::default();
@@ -227,9 +236,12 @@ mod tests {
 
         // Verify pod is queued and eventually scheduled
         assert!(state.pods.contains_key(&pod.id));
-        let scheduled_pod_id = rx.recv().await.expect("Expected pod ID");
-        assert_eq!(scheduled_pod_id, pod.id);
+
+        let to_be_scheduled_pod_id = rx.recv().await.expect("Expected pod ID");
+        assert_eq!(to_be_scheduled_pod_id, pod.id);
+
         schedule(state.clone(), pod.id).await;
+
         let node_pods = state.pod_map.get(&node.name);
         assert!(state.nodes.contains_key(&node.name));
         assert!(node_pods.unwrap().contains(&pod.id));
@@ -238,14 +250,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_node_event_schedule_unscheduled_pods() {
         let (tx, _rx) = mpsc::channel(10);
-
-        let mock_server = MockServer::start().await;
-        Mock::given(method("PATCH"))
-            .and(path_regex(r"^/pods/.*$"))
-            .respond_with(ResponseTemplate::new(200))
-            .mount(&mock_server)
-            .await;
-
+        let mock_server = start_mock_server().await;
         let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
         // Simulate pod being added before any nodes exist

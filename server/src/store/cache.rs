@@ -31,6 +31,11 @@ impl CacheManager {
         }
     }
 
+    // --- Node ops ---
+    //
+    // - Check name and addr duplicates
+    // - Add to cache
+
     pub fn node_name_exists(&self, name: &str) -> bool {
         self.node_names.contains(name)
     }
@@ -44,6 +49,14 @@ impl CacheManager {
         self.node_addrs.insert(addr.to_string());
         self.node_names.insert(name.to_string());
     }
+
+    // --- Pod ops ---
+    //
+    // - Check name duplicates
+    // - Get pod info by name
+    // - Add pod
+    // - Delete pod
+    // - Assign pod
 
     pub fn pod_name_exists(&self, name: &str) -> bool {
         self.pod_name_idx.contains_key(name)
