@@ -128,6 +128,7 @@ mod tests {
 
         server
     }
+
     #[tokio::test]
     async fn test_sync_no_pods() {
         let docker = Box::new(TestDocker::new());

@@ -199,7 +199,7 @@ mod tests {
         let server = MockServer::start().await;
 
         Mock::given(method("PATCH"))
-            .and(path_regex(r"^/pods/[^/]+/status$"))
+            .and(path_regex(r"^/pods/.*$"))
             .respond_with(ResponseTemplate::new(200))
             .mount(&server)
             .await;

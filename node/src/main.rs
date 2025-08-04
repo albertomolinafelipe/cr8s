@@ -2,7 +2,7 @@
 //! - API server
 //! - Worker loop
 //! - Sync logic
-//! - Controller loop
+//! - Watcher loop
 //!
 //! Each subsystem communicates via a shared application state and message channels.
 

@@ -116,7 +116,9 @@ impl Default for UserMetadata {
 
 impl Default for PodSpec {
     fn default() -> Self {
-        Self { containers: vec![] }
+        Self {
+            containers: vec![ContainerSpec::default()],
+        }
     }
 }
 
