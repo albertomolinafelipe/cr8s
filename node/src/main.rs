@@ -2,31 +2,22 @@
 //! - API server
 //! - Worker loop
 //! - Sync logic
-//! - Controller loop
+//! - Watcher loop
 //!
 //! Each subsystem communicates via a shared application state and message channels.
 
-use actix_web::web;
-use shared::api::EventType;
+use r8sagt::{
+    api,
+    core::{sync, watcher, worker},
+    models::WorkRequest,
+    state::new_state,
+};
 use tokio::sync::mpsc;
 use tracing_subscriber::{self, EnvFilter};
-use uuid::Uuid;
-
-mod api;
-mod controller;
-pub mod docker;
-pub mod state;
-mod sync;
-mod worker;
-
-struct WorkRequest {
-    id: Uuid,
-    event: EventType,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let state = web::Data::new(state::NodeState::new());
+    let state = new_state();
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,node=trace"));
@@ -37,12 +28,12 @@ async fn main() -> Result<(), String> {
 
     let (tx, rx) = mpsc::channel::<WorkRequest>(100);
 
-    let controller_fut = controller::run(state.clone(), tx);
+    let watcher_fut = watcher::run(state.clone(), tx);
     let worker_fut = worker::run(state.clone(), rx);
     let sync_fut = sync::run(state.clone());
     let api_fut = api::run(state.clone());
 
-    tokio::try_join!(api_fut, worker_fut, sync_fut, controller_fut)?;
+    tokio::try_join!(api_fut, worker_fut, sync_fut, watcher_fut)?;
 
     Ok(())
 }
