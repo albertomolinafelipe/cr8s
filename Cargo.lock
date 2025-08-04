@@ -2356,10 +2356,16 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "chrono",
+ "futures-util",
+ "reqwest",
  "serde",
  "serde_json",
  "tabled",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "uuid",
 ]
 

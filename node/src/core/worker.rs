@@ -74,6 +74,7 @@ pub async fn reconciliate(state: State, id: Uuid) {
 /// Deletes the runtime entry from local state, then stops its containers via docker.
 async fn delete(state: State, id: Uuid) {
     let Some(pod_runtime) = state.get_pod_runtime(&id) else {
+        tracing::error!("Pod runtime not found");
         return;
     };
     let container_ids: Vec<String> = pod_runtime
@@ -86,4 +87,79 @@ async fn delete(state: State, id: Uuid) {
         Ok(()) => {}
         Err(err) => tracing::error!(error=%err, "Failed to delete pod"),
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use shared::models::PodObject;
+
+    use crate::{docker::test::TestDocker, models::PodRuntime, state::new_state_with};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_reconciliate_non_existent_pod() {
+        let id = Uuid::new_v4();
+        let docker = Box::new(TestDocker::new());
+        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        reconciliate(state.clone(), id).await;
+
+        // should not insert runtime or call docker api
+        assert!(state.get_pod_runtime(&id).is_none());
+        assert_eq!(docker.start_pod_calls.lock().await.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_reconciliate_existing_runtime() {
+        let pod = PodObject::default();
+        let docker = Box::new(TestDocker::new());
+        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        state.put_pod(&pod);
+        let runtime = PodRuntime {
+            id: pod.id,
+            name: "".to_string(),
+            containers: HashMap::new(),
+        };
+        state.add_pod_runtime(runtime).unwrap();
+        reconciliate(state.clone(), pod.id).await;
+        // should not call docker api
+        assert_eq!(docker.start_pod_calls.lock().await.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_reconciliate_new_runtime() {
+        let pod = PodObject::default();
+        let docker = Box::new(TestDocker::new());
+        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        state.put_pod(&pod);
+
+        reconciliate(state.clone(), pod.id).await;
+        assert_eq!(docker.start_pod_calls.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_runtime_not_found() {
+        let docker = Box::new(TestDocker::new());
+        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+
+        delete(state.clone(), Uuid::new_v4()).await;
+        // should not call docker api
+        assert_eq!(docker.stop_pod_calls.lock().await.len(), 0);
+    }
+    #[tokio::test]
+    async fn test_delete() {
+        let docker = Box::new(TestDocker::new());
+        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        let runtime = PodRuntime {
+            id: Uuid::new_v4(),
+            name: "".to_string(),
+            containers: HashMap::new(),
+        };
+        state.add_pod_runtime(runtime.clone()).unwrap();
+        delete(state.clone(), runtime.id).await;
+        assert_eq!(docker.stop_pod_calls.lock().await.len(), 1);
+        assert!(state.get_pod_runtime(&runtime.id).is_none());
+    }
 }

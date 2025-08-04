@@ -1,14 +1,14 @@
 //! Test implementation of the DockerClient trait for use in unit tests.
 //! Simulates container lifecycle behavior with configurable error injection.
 
+use crate::docker::errors::DockerError;
+use crate::docker::manager::DockerClient;
+use crate::models::{ContainerRuntime, PodRuntime};
 use async_trait::async_trait;
 use bollard::secret::ContainerStateStatusEnum;
 use dashmap::DashMap;
 use futures_util::lock::Mutex;
 use futures_util::stream::BoxStream;
-use r8sagt::docker::errors::DockerError;
-use r8sagt::docker::manager::DockerClient;
-use r8sagt::models::{ContainerRuntime, PodRuntime};
 use shared::models::PodObject;
 use std::collections::HashMap;
 use std::sync::Arc;

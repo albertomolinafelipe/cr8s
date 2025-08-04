@@ -8,7 +8,7 @@
 
 use r8sagt::{
     api,
-    core::{controller, sync, worker},
+    core::{sync, watcher, worker},
     models::WorkRequest,
     state::new_state,
 };
@@ -28,12 +28,12 @@ async fn main() -> Result<(), String> {
 
     let (tx, rx) = mpsc::channel::<WorkRequest>(100);
 
-    let controller_fut = controller::run(state.clone(), tx);
+    let watcher_fut = watcher::run(state.clone(), tx);
     let worker_fut = worker::run(state.clone(), rx);
     let sync_fut = sync::run(state.clone());
     let api_fut = api::run(state.clone());
 
-    tokio::try_join!(api_fut, worker_fut, sync_fut, controller_fut)?;
+    tokio::try_join!(api_fut, worker_fut, sync_fut, watcher_fut)?;
 
     Ok(())
 }
