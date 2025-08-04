@@ -3,11 +3,14 @@
 //! This module defines a background task that periodically polls the state of all container
 //! runtimes and reports their status back to the control plane.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use bollard::secret::ContainerStateStatusEnum;
 use reqwest::Client;
-use shared::{api::PodStatusUpdate, models::PodStatus};
+use shared::{
+    api::{PodField, PodPatch, PodStatusUpdate},
+    models::PodStatus,
+};
 use tokio::time;
 
 use crate::state::State;
@@ -30,13 +33,15 @@ pub async fn run(state: State) -> Result<(), String> {
 pub async fn run_iteration(state: &State) -> Result<(), String> {
     let client = Client::new();
     for p in state.list_pod_runtimes().iter() {
-        let mut container_statuses: Vec<(String, String)> = Vec::new();
+        let mut container_statuses_map: HashMap<String, ContainerStateStatusEnum> = HashMap::new();
+        let mut container_statuses_for_update: Vec<(String, String)> = Vec::new();
         let mut pod_status = PodStatus::Running;
 
         for c in p.containers.values() {
             match state.docker_mgr.get_container_status(&c.id).await {
                 Ok(s) => {
-                    container_statuses.push((c.spec_name.clone(), s.to_string()));
+                    container_statuses_map.insert(c.spec_name.clone(), s.clone());
+                    container_statuses_for_update.push((c.spec_name.clone(), s.to_string()));
                     if s != ContainerStateStatusEnum::RUNNING {
                         pod_status = PodStatus::Succeeded;
                     }
@@ -45,23 +50,33 @@ pub async fn run_iteration(state: &State) -> Result<(), String> {
             }
         }
 
-        let update = PodStatusUpdate {
+        // Update the in-memory runtime state for this pod
+        if let Err(err) = state.update_pod_runtime_status(&p.id, container_statuses_map) {
+            tracing::warn!(error=%err, "Failed to update pod runtime status in-memory");
+        }
+
+        // Build and send status update to control plane
+        // Build and send status update to control plane
+        let Ok(update) = serde_json::to_value(PodStatusUpdate {
             status: pod_status,
-            container_statuses,
+            container_statuses: container_statuses_for_update,
             node_name: state.config.name.clone(),
+        }) else {
+            continue;
+        };
+        let payload = PodPatch {
+            pod_field: PodField::Status,
+            value: update,
         };
 
         if let Err(err) = client
-            .patch(format!(
-                "{}/pods/{}/status",
-                state.config.server_url, p.name
-            ))
-            .json(&update)
+            .patch(format!("{}/pods/{}", state.config.server_url, p.name))
+            .json(&payload)
             .send()
             .await
         {
             tracing::warn!(error=%err, "Status update failed");
-        }
+        };
     }
     Ok(())
 }

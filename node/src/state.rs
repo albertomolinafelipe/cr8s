@@ -3,7 +3,10 @@
 //! This module defines the in-memory state of a node in the cluster
 //! Including its config, known pods, runtime container info and docker
 
+use std::collections::HashMap;
+
 use actix_web::web::Data;
+use bollard::secret::ContainerStateStatusEnum;
 use dashmap::DashMap;
 use shared::models::PodObject;
 use uuid::Uuid;
@@ -104,5 +107,24 @@ impl NodeState {
         }
         self.pod_runtimes.insert(pod_runtime.id, pod_runtime);
         Ok(())
+    }
+
+    /// Updates the runtime status of a pod by merging new container statuses.
+    pub fn update_pod_runtime_status(
+        &self,
+        pod_id: &Uuid,
+        container_statuses: HashMap<String, ContainerStateStatusEnum>,
+    ) -> Result<(), String> {
+        if let Some(mut pod_runtime) = self.pod_runtimes.get_mut(pod_id) {
+            // Update each container status in pod_runtime
+            for (spec_name, status) in container_statuses {
+                if let Some(container) = pod_runtime.containers.get_mut(&spec_name) {
+                    container.status = status.clone();
+                }
+            }
+            Ok(())
+        } else {
+            Err(format!("PodRuntime with ID '{}' not found", pod_id))
+        }
     }
 }
