@@ -19,8 +19,6 @@ use crate::state::State;
 ///
 /// This continuously polls container states via the Docker manager and sends status updates
 /// to the control plane via PATCH requests.
-///
-/// Loop interval is defined by the `SYNC_LOOP_INTERVAL` environment variable (in seconds).
 pub async fn run(state: State) -> Result<(), String> {
     tracing::info!(sync=%state.config.sync_loop, "Starting sync loop");
     let mut interval = time::interval(Duration::from_secs(state.config.sync_loop.into()));
@@ -34,32 +32,33 @@ pub async fn run_iteration(state: &State) -> Result<(), String> {
     let client = Client::new();
     for p in state.list_pod_runtimes().iter() {
         let mut container_statuses_map: HashMap<String, ContainerStateStatusEnum> = HashMap::new();
-        let mut container_statuses_for_update: Vec<(String, String)> = Vec::new();
-        let mut pod_status = PodStatus::Running;
 
         for c in p.containers.values() {
             match state.docker_mgr.get_container_status(&c.id).await {
                 Ok(s) => {
                     container_statuses_map.insert(c.spec_name.clone(), s.clone());
-                    container_statuses_for_update.push((c.spec_name.clone(), s.to_string()));
-                    if s != ContainerStateStatusEnum::RUNNING {
-                        pod_status = PodStatus::Succeeded;
-                    }
                 }
                 Err(e) => tracing::error!(error=%e, "Failed to get container status"),
-            }
+            };
         }
 
         // Update the in-memory runtime state for this pod
-        if let Err(err) = state.update_pod_runtime_status(&p.id, container_statuses_map) {
-            tracing::warn!(error=%err, "Failed to update pod runtime status in-memory");
-        }
+        let pod_status =
+            match state.update_pod_runtime_status(&p.id, container_statuses_map.clone()) {
+                Ok(status) => status,
+                Err(err) => {
+                    tracing::warn!(error=%err, "Failed to update pod runtime status in-memory");
+                    PodStatus::Unknown
+                }
+            };
 
-        // Build and send status update to control plane
         // Build and send status update to control plane
         let Ok(update) = serde_json::to_value(PodStatusUpdate {
             status: pod_status,
-            container_statuses: container_statuses_for_update,
+            container_statuses: container_statuses_map
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_string()))
+                .collect(),
             node_name: state.config.name.clone(),
         }) else {
             continue;

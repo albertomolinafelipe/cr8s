@@ -4,6 +4,7 @@ use std::fmt;
 pub enum DockerError {
     ConnectionError(String),
     ImagePullError(String),
+    NotFound(String),
     ContainerCreationError(String),
     ContainerStartError(String),
     ContainerInspectError(String),
@@ -18,6 +19,7 @@ impl fmt::Display for DockerError {
         match self {
             DockerError::ConnectionError(msg) => write!(f, "Connection error: {}", msg),
             DockerError::ImagePullError(msg) => write!(f, "Image pull error: {}", msg),
+            DockerError::NotFound(msg) => write!(f, "Not found: {}", msg),
             DockerError::ContainerCreationError(msg) => {
                 write!(f, "Container creation error: {}", msg)
             }

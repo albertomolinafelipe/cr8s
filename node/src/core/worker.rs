@@ -34,7 +34,7 @@ pub async fn run(state: State, mut rx: Receiver<WorkRequest>) -> Result<(), Stri
 ///
 /// Skips reconciliation if the runtime already exists.
 /// If Docker fails to start the pod, logs the error and exits gracefully.
-async fn reconciliate(state: State, id: Uuid) {
+pub async fn reconciliate(state: State, id: Uuid) {
     let Some(pod) = state.get_pod(&id) else {
         tracing::warn!("Pod {}, not found in pod manager", id);
         return;
