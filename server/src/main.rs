@@ -5,7 +5,7 @@ use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use std::env;
 use tracing_subscriber::{self, EnvFilter};
 
-mod drift_controller;
+mod controllers;
 mod endpoints;
 mod scheduler;
 mod store;
@@ -28,8 +28,8 @@ async fn main() -> std::io::Result<()> {
     if config.run_scheduler {
         tokio::spawn(scheduler::run());
     }
-    if config.run_drift {
-        tokio::spawn(drift_controller::run());
+    if config.run_gc {
+        tokio::spawn(controllers::garbage_collector::run());
     }
 
     let server = HttpServer::new(move || {
@@ -50,7 +50,7 @@ async fn root() -> impl Responder {
 struct Config {
     port: u16,
     run_scheduler: bool,
-    run_drift: bool,
+    run_gc: bool,
 }
 
 impl Config {
@@ -65,7 +65,7 @@ impl Config {
                 .map(|v| v != "false")
                 .unwrap_or(true),
 
-            run_drift: env::var("RUN_DRIFT").map(|v| v != "false").unwrap_or(true),
+            run_gc: env::var("RUN_GC").map(|v| v != "false").unwrap_or(true),
         }
     }
 }
