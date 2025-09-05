@@ -113,7 +113,6 @@ async fn update(
 ) -> impl Responder {
     let patch = body.into_inner();
     let pod_name = path_string.into_inner();
-
     match patch.pod_field {
         PodField::NodeName => match patch.value.as_str() {
             Some(node_name) => match state.assign_pod(&pod_name, node_name.to_string()).await {

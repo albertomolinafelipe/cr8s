@@ -114,7 +114,7 @@ impl Default for ContainerSpec {
 impl Default for PodSpec {
     fn default() -> Self {
         PodSpec {
-            node_name: "test-node".to_string(),
+            node_name: "".to_string(),
             containers: vec![ContainerSpec::default()],
         }
     }

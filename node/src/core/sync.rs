@@ -171,7 +171,7 @@ mod tests {
         handle.abort();
 
         // should have called for every container in the pod
-        assert_eq!(docker.get_container_status_calls.lock().await.len(), 2);
+        assert_eq!(docker.get_container_status_calls.lock().await.len(), 1);
         // one call in iteration
         let requests = mock_server.received_requests().await.unwrap();
         assert_eq!(requests.len(), 1);

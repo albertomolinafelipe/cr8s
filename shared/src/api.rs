@@ -45,7 +45,7 @@ pub struct CreateResponse {
 
 // --- Pod Definitions ---
 
-#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct UserMetadata {
     pub name: String,
 }
@@ -107,4 +107,12 @@ pub struct PodStatusUpdate {
     pub node_name: String,
     pub status: PodPhase,
     pub container_statuses: Vec<(String, String)>,
+}
+
+impl Default for UserMetadata {
+    fn default() -> Self {
+        UserMetadata {
+            name: Uuid::new_v4().to_string(),
+        }
+    }
 }

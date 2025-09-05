@@ -2,6 +2,7 @@ use actix_web::HttpResponse as Http;
 use std::fmt;
 
 /// Represents errors that can occur in the `Store` implementation.
+#[derive(Debug)]
 pub enum StoreError {
     /// Input data is in the wrong format
     WrongFormat(String),
