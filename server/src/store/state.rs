@@ -13,7 +13,8 @@ use uuid::Uuid;
 
 use shared::{
     api::{EventType, NodeEvent, PodEvent},
-    models::{Metadata, Node, PodObject, PodSpec, PodStatus, UserMetadata},
+    models::node::Node,
+    models::pod::{Metadata, Pod, PodPhase, PodSpec, PodStatus},
 };
 
 use crate::{State, store::cache::CacheManager};
@@ -69,23 +70,20 @@ impl R8s {
     }
 
     /// Adds a new pod, assigns it a UUID, and emits a PodEvent.
-    pub async fn add_pod(&self, spec: PodSpec, user: UserMetadata) -> Result<Uuid, StoreError> {
+    pub async fn add_pod(&self, spec: PodSpec, metadata: Metadata) -> Result<Uuid, StoreError> {
         // validate spec and name
         validate_pod(&spec)?;
 
         // since its low level manifest is not stored
-        let pod = PodObject {
-            metadata: Metadata {
-                user,
-                ..Default::default()
-            },
+        let pod = Pod {
             spec,
-            ..Default::default()
+            metadata,
+            status: PodStatus::default(),
         };
 
         // save object and metadata in store and cache
-        self.store.put_pod(&pod.id, &pod).await?;
-        self.cache.add_pod(&pod.metadata.user.name, pod.id);
+        self.store.put_pod(&pod.metadata.id, &pod).await?;
+        self.cache.add_pod(&pod.metadata.name, pod.metadata.id);
 
         // send event
         let event = PodEvent {
@@ -93,7 +91,7 @@ impl R8s {
             pod: pod.clone(),
         };
         let _ = self.pod_tx.send(event);
-        Ok(pod.id)
+        Ok(pod.metadata.id)
     }
 
     /// Deletes a pod by name and emits a deletion event.
@@ -147,7 +145,7 @@ impl R8s {
             .await?
             .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
 
-        if !pod.node_name.is_empty() {
+        if !pod.spec.node_name.is_empty() {
             return Err(StoreError::Conflict(format!(
                 "Pod ({}) is already assigned to a node",
                 name
@@ -155,8 +153,8 @@ impl R8s {
         }
 
         // assign ad store node
-        pod.node_name = node_name.clone();
-        self.store.put_pod(&pod.id, &pod).await?;
+        pod.spec.node_name = node_name.clone();
+        self.store.put_pod(&pod.metadata.id, &pod).await?;
 
         // update cache, move from unassigned to node
         self.cache.assign_pod(name, &pod_id, &node_name);
@@ -174,7 +172,7 @@ impl R8s {
     pub async fn update_pod_status(
         &self,
         id: Uuid,
-        status: PodStatus,
+        phase: PodPhase,
         container_statuses: &mut Vec<(String, String)>,
     ) -> Result<(), StoreError> {
         let mut pod = self
@@ -184,9 +182,9 @@ impl R8s {
             .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
 
         validate_container_statuses(&pod.spec, container_statuses);
-        pod.last_status_update = Some(Utc::now());
-        pod.pod_status = status;
-        pod.container_status = container_statuses.clone();
+        pod.status.last_update = Some(Utc::now());
+        pod.status.phase = phase;
+        pod.status.container_status = container_statuses.clone();
         self.store.put_pod(&id, &pod).await?;
         // send event
         let event = PodEvent {
@@ -198,7 +196,7 @@ impl R8s {
     }
 
     /// Retrieves all pods, or only those scheduled on a specific node.
-    pub async fn get_pods(&self, query: Option<String>) -> Vec<PodObject> {
+    pub async fn get_pods(&self, query: Option<String>) -> Vec<Pod> {
         match query {
             Some(node_name) => {
                 let Some(pod_ids_ref) = self.cache.get_pod_ids(&node_name) else {

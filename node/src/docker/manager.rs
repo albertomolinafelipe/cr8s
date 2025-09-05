@@ -22,7 +22,7 @@ use bytes::Bytes;
 use dashmap::DashSet;
 use futures_util::StreamExt;
 use futures_util::stream::{BoxStream, TryStreamExt};
-use shared::models::PodObject;
+use shared::models::pod::Pod;
 use std::collections::HashMap;
 
 /// A trait for interacting with container operations needed by the scheduler runtime.
@@ -35,7 +35,7 @@ pub trait DockerClient: Send + Sync {
     ) -> Result<ContainerStateStatusEnum, DockerError>;
 
     /// Start a pod by pulling its images and launching all specified containers.
-    async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError>;
+    async fn start_pod(&self, pod: Pod) -> Result<PodRuntime, DockerError>;
 
     /// Stop and remove all containers in a pod
     async fn stop_pod(&self, container_ids: &Vec<String>) -> Result<(), DockerError>;
@@ -126,7 +126,7 @@ impl DockerClient for DockerManager {
             .unwrap_or_else(|| ContainerStateStatusEnum::EMPTY))
     }
 
-    async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
+    async fn start_pod(&self, pod: Pod) -> Result<PodRuntime, DockerError> {
         let docker = self.client();
         let mut container_runtimes = HashMap::new();
 
@@ -136,7 +136,7 @@ impl DockerClient for DockerManager {
 
             // build unique name
             // NOTE: without namespaces or restarts
-            let container_name = format!("r8s_{}_{}", container_spec.name, pod.metadata.user.name);
+            let container_name = format!("r8s_{}_{}", container_spec.name, pod.metadata.name);
 
             // build container config from spec
             let config = Config {
@@ -193,8 +193,8 @@ impl DockerClient for DockerManager {
 
         // build final podruntime struct
         Ok(PodRuntime {
-            id: pod.id,
-            name: pod.metadata.user.name,
+            id: pod.metadata.id,
+            name: pod.metadata.name,
             containers: container_runtimes,
         })
     }

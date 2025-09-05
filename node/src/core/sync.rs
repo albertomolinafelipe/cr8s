@@ -9,7 +9,7 @@ use bollard::secret::ContainerStateStatusEnum;
 use reqwest::Client;
 use shared::{
     api::{PodField, PodPatch, PodStatusUpdate},
-    models::PodStatus,
+    models::pod::PodPhase,
 };
 use tokio::time;
 
@@ -48,7 +48,7 @@ pub async fn run_iteration(state: &State) -> Result<(), String> {
                 Ok(status) => status,
                 Err(err) => {
                     tracing::warn!(error=%err, "Failed to update pod runtime status in-memory");
-                    PodStatus::Unknown
+                    PodPhase::Unknown
                 }
             };
 
@@ -95,7 +95,7 @@ mod tests {
 
     use super::*;
     use bollard::secret::ContainerStateStatusEnum;
-    use shared::models::{ContainerSpec, PodObject, PodSpec};
+    use shared::models::pod::Pod;
     use tokio::sync::Notify;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
@@ -158,15 +158,11 @@ mod tests {
             ..Default::default()
         };
         let state = new_state_with(Some(config), Some(docker.clone()));
-        let pod = PodObject {
-            spec: PodSpec {
-                containers: vec![ContainerSpec::default(), ContainerSpec::default()],
-            },
-            ..Default::default()
-        };
+        let pod = Pod::default();
+
         // create and add pod to state
         state.put_pod(&pod);
-        worker::reconciliate(state.clone(), pod.id).await;
+        worker::reconciliate(state.clone(), pod.metadata.id).await;
         docker.set_all_container_statuses(ContainerStateStatusEnum::RUNNING);
         assert!(state.list_pod_runtimes().len() != 0);
 
@@ -175,14 +171,14 @@ mod tests {
         handle.abort();
 
         // should have called for every container in the pod
-        assert_eq!(docker.get_container_status_calls.lock().await.len(), 2);
+        assert_eq!(docker.get_container_status_calls.lock().await.len(), 1);
         // one call in iteration
         let requests = mock_server.received_requests().await.unwrap();
         assert_eq!(requests.len(), 1);
         // update node state, should read running
         assert!(
             state
-                .get_pod_runtime(&pod.id)
+                .get_pod_runtime(&pod.metadata.id)
                 .unwrap()
                 .containers
                 .values()

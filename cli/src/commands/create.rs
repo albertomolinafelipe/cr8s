@@ -5,8 +5,10 @@ use clap::Parser;
 use erased_serde::serialize_trait_object;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::api::PodManifest;
-use shared::models::{PodSpec, UserMetadata};
+use shared::{
+    api::{PodManifest, UserMetadata},
+    models::pod::ContainerSpec,
+};
 use tokio::fs;
 
 use crate::config::Config;
@@ -59,7 +61,7 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
 
 // --- Manifest trait ---
 
-/// Marker trait for serializable manifests that can be sent over the wire.
+/// Marker trait for serializable manifests that can be sent
 pub trait Manifest: erased_serde::Serialize + Send + Sync {}
 impl<T: Serialize + Send + Sync> Manifest for T {}
 serialize_trait_object!(Manifest);
@@ -80,7 +82,7 @@ pub struct GenericManifest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "spec", rename_all = "PascalCase")]
 pub enum Spec {
-    Pod(PodSpec),
+    Pod(Vec<ContainerSpec>),
     Deployment,
 }
 

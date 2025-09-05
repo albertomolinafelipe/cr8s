@@ -40,7 +40,7 @@ pub async fn reconciliate(state: State, id: Uuid) {
         return;
     };
     // Check runtime state
-    if let Some(_) = state.get_pod_runtime(&pod.id) {
+    if let Some(_) = state.get_pod_runtime(&pod.metadata.id) {
         tracing::error!("Pod already stored in runtime state, not implemented");
         return;
     }
@@ -106,7 +106,7 @@ mod tests {
 
     use super::*;
     use crate::{docker::test::TestDocker, models::PodRuntime, state::new_state_with};
-    use shared::models::PodObject;
+    use shared::models::pod::Pod;
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -123,29 +123,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_reconciliate_existing_runtime() {
-        let pod = PodObject::default();
+        let pod = Pod::default();
         let docker = Box::new(TestDocker::new());
         let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
         state.put_pod(&pod);
         let runtime = PodRuntime {
-            id: pod.id,
+            id: pod.metadata.id,
             name: "".to_string(),
             containers: HashMap::new(),
         };
         state.add_pod_runtime(runtime).unwrap();
-        reconciliate(state.clone(), pod.id).await;
+        reconciliate(state.clone(), pod.metadata.id).await;
         // should not call docker api
         assert_eq!(docker.start_pod_calls.lock().await.len(), 0);
     }
 
     #[tokio::test]
     async fn test_reconciliate_new_runtime() {
-        let pod = PodObject::default();
+        let pod = Pod::default();
         let docker = Box::new(TestDocker::new());
         let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
         state.put_pod(&pod);
 
-        reconciliate(state.clone(), pod.id).await;
+        reconciliate(state.clone(), pod.metadata.id).await;
         assert_eq!(docker.start_pod_calls.lock().await.len(), 1);
     }
 

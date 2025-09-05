@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use actix_web::web::Data;
 use bollard::secret::ContainerStateStatusEnum;
 use dashmap::DashMap;
-use shared::models::{PodObject, PodStatus};
+use shared::models::pod::{Pod, PodPhase};
 use uuid::Uuid;
 
 use crate::{
@@ -34,7 +34,7 @@ pub fn new_state_with(
 pub struct NodeState {
     pub config: Config,
     pub docker_mgr: Box<dyn DockerClient + Send + Sync>,
-    pods: DashMap<Uuid, PodObject>,
+    pods: DashMap<Uuid, Pod>,
     pod_runtimes: DashMap<Uuid, PodRuntime>,
 }
 
@@ -66,11 +66,11 @@ impl NodeState {
 
     // --- Pods ---
 
-    pub fn get_pod(&self, id: &Uuid) -> Option<PodObject> {
+    pub fn get_pod(&self, id: &Uuid) -> Option<Pod> {
         self.pods.get(id).map(|r| r.clone())
     }
-    pub fn put_pod(&self, pod: &PodObject) {
-        self.pods.insert(pod.id, pod.clone());
+    pub fn put_pod(&self, pod: &Pod) {
+        self.pods.insert(pod.metadata.id, pod.clone());
     }
     pub fn delete_pod(&self, id: &Uuid) {
         self.pods.remove(id);
@@ -108,15 +108,15 @@ impl NodeState {
         &self,
         pod_id: &Uuid,
         container_statuses: HashMap<String, ContainerStateStatusEnum>,
-    ) -> Result<PodStatus, String> {
+    ) -> Result<PodPhase, String> {
         if let Some(mut pod_runtime) = self.pod_runtimes.get_mut(pod_id) {
             // Update each container status in pod_runtime
-            let mut pod_status = PodStatus::Running;
+            let mut pod_status = PodPhase::Running;
             for (spec_name, status) in container_statuses {
                 if let Some(container) = pod_runtime.containers.get_mut(&spec_name) {
                     container.status = status.clone();
                     if container.status != ContainerStateStatusEnum::RUNNING {
-                        pod_status = PodStatus::Succeeded;
+                        pod_status = PodPhase::Succeeded;
                     }
                 }
             }

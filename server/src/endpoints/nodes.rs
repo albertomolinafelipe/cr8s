@@ -15,7 +15,7 @@ use actix_web::{
 use serde::Deserialize;
 use shared::{
     api::{EventType, NodeEvent, NodeRegisterReq},
-    models::{Node, NodeStatus},
+    models::node::{Node, NodeStatus},
 };
 use uuid::Uuid;
 
@@ -149,7 +149,6 @@ mod tests {
         http::StatusCode,
         test::{self, TestRequest, call_service, init_service, read_body_json},
     };
-    use shared::models::Node;
 
     async fn node_service(
         state: &State,

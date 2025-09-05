@@ -2,7 +2,7 @@
 //! Fetches a list and displays it as a formatted table.
 
 use clap::Parser;
-use shared::models::{Node, PodObject};
+use shared::models::{node::Node, pod::Pod};
 use tabled::{Table, settings::Style};
 
 use super::ResourceType;
@@ -33,7 +33,7 @@ pub async fn handle_get(config: &Config, args: &GetArgs) {
                 }
                 Err(e) => eprintln!("Failed to parse nodes: {}", e),
             },
-            ResourceType::Pods => match resp.json::<Vec<PodObject>>().await {
+            ResourceType::Pods => match resp.json::<Vec<Pod>>().await {
                 Ok(data) => {
                     let mut table = Table::new(data);
                     table.with(Style::blank());
