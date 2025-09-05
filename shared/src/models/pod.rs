@@ -99,3 +99,40 @@ impl From<UserMetadata> for Metadata {
         }
     }
 }
+
+impl Default for ContainerSpec {
+    fn default() -> Self {
+        ContainerSpec {
+            name: "test-container".to_string(),
+            image: "busybox:latest".to_string(),
+            ports: None,
+            env: None,
+        }
+    }
+}
+
+impl Default for PodSpec {
+    fn default() -> Self {
+        PodSpec {
+            node_name: "test-node".to_string(),
+            containers: vec![ContainerSpec::default()],
+        }
+    }
+}
+
+impl Default for Pod {
+    fn default() -> Self {
+        let now = Utc::now();
+        Pod {
+            metadata: Metadata {
+                id: Uuid::new_v4(),
+                name: "test-pod".to_string(),
+                created_at: now,
+                modified_at: now,
+                generation: 1,
+            },
+            spec: PodSpec::default(),
+            status: PodStatus::default(),
+        }
+    }
+}

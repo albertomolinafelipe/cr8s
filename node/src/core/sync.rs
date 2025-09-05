@@ -95,7 +95,7 @@ mod tests {
 
     use super::*;
     use bollard::secret::ContainerStateStatusEnum;
-    use shared::models::pod::{ContainerSpec, Pod, PodSpec};
+    use shared::models::pod::Pod;
     use tokio::sync::Notify;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
@@ -158,15 +158,11 @@ mod tests {
             ..Default::default()
         };
         let state = new_state_with(Some(config), Some(docker.clone()));
-        let pod = PodObject {
-            spec: PodSpec {
-                containers: vec![ContainerSpec::default(), ContainerSpec::default()],
-            },
-            ..Default::default()
-        };
+        let pod = Pod::default();
+
         // create and add pod to state
         state.put_pod(&pod);
-        worker::reconciliate(state.clone(), pod.id).await;
+        worker::reconciliate(state.clone(), pod.metadata.id).await;
         docker.set_all_container_statuses(ContainerStateStatusEnum::RUNNING);
         assert!(state.list_pod_runtimes().len() != 0);
 
@@ -182,7 +178,7 @@ mod tests {
         // update node state, should read running
         assert!(
             state
-                .get_pod_runtime(&pod.id)
+                .get_pod_runtime(&pod.metadata.id)
                 .unwrap()
                 .containers
                 .values()

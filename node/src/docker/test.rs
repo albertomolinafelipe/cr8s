@@ -9,7 +9,7 @@ use bollard::secret::ContainerStateStatusEnum;
 use dashmap::DashMap;
 use futures_util::lock::Mutex;
 use futures_util::stream::BoxStream;
-use shared::models::PodObject;
+use shared::models::pod::Pod;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -26,7 +26,7 @@ pub struct TestDocker {
     pub start_pod_default_status: Option<ContainerStateStatusEnum>,
 
     pub get_container_status_calls: Arc<Mutex<Vec<String>>>,
-    pub start_pod_calls: Arc<Mutex<Vec<PodObject>>>,
+    pub start_pod_calls: Arc<Mutex<Vec<Pod>>>,
     pub stop_pod_calls: Arc<Mutex<Vec<Vec<String>>>>,
     pub get_logs_calls: Arc<Mutex<Vec<String>>>,
     pub stream_logs_calls: Arc<Mutex<Vec<String>>>,
@@ -80,7 +80,7 @@ impl DockerClient for TestDocker {
         }
     }
 
-    async fn start_pod(&self, pod: PodObject) -> Result<PodRuntime, DockerError> {
+    async fn start_pod(&self, pod: Pod) -> Result<PodRuntime, DockerError> {
         self.start_pod_calls.lock().await.push(pod.clone());
 
         if self.fail_start {
@@ -111,8 +111,8 @@ impl DockerClient for TestDocker {
         }
 
         Ok(PodRuntime {
-            id: pod.id,
-            name: pod.metadata.user.name,
+            id: pod.metadata.id,
+            name: pod.metadata.name,
             containers: containers_runtime,
         })
     }

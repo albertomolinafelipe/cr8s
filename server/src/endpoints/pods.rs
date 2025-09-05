@@ -392,7 +392,11 @@ mod tests {
         test::{self, TestRequest, call_service, init_service, read_body_json},
     };
     use serde_json::Value;
-    use shared::models::{ContainerSpec, Node, PodObject, PodSpec, PodStatus, UserMetadata};
+    use shared::api::UserMetadata;
+    use shared::models::{
+        node::Node,
+        pod::{ContainerSpec, Pod, PodPhase},
+    };
 
     async fn pod_service(
         state: &State,
@@ -425,7 +429,7 @@ mod tests {
     async fn add_pod(state: &State) -> String {
         let spec = PodSpec::default();
         let metadata = UserMetadata::default();
-        assert!(state.add_pod(spec, metadata.clone()).await.is_ok());
+        assert!(state.add_pod(spec, metadata.clone().into()).await.is_ok());
         return metadata.name;
     }
 
@@ -442,7 +446,7 @@ mod tests {
         let resp = call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let pods: Vec<PodObject> = read_body_json(resp).await;
+        let pods: Vec<Pod> = read_body_json(resp).await;
         assert_eq!(pods.len(), 1, "There should be a single pod");
     }
 
@@ -468,8 +472,8 @@ mod tests {
         let mut events: Vec<PodEvent> = Vec::new();
         collect_stream_events(resp, &mut events, 1).await;
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].pod.metadata.user.name, pod_name_1);
-        assert_eq!(events[0].pod.node_name, node_name);
+        assert_eq!(events[0].pod.metadata.name, pod_name_1);
+        assert_eq!(events[0].pod.spec.node_name, node_name);
 
         let req = test::TestRequest::get()
             .uri("/pods?watch=true&nodeName=")
@@ -482,8 +486,8 @@ mod tests {
         let mut events: Vec<PodEvent> = Vec::new();
         collect_stream_events(resp, &mut events, 1).await;
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].pod.metadata.user.name, pod_name_2);
-        assert_eq!(events[0].pod.node_name, "");
+        assert_eq!(events[0].pod.metadata.name, pod_name_2);
+        assert_eq!(events[0].pod.spec.node_name, "");
     }
 
     // --- Patch Status ---
@@ -497,7 +501,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name,
-            status: PodStatus::Running,
+            status: PodPhase::Running,
             container_statuses: vec![],
         };
         let payload = PodPatch {
@@ -522,7 +526,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name: n.name,
-            status: PodStatus::Running,
+            status: PodPhase::Running,
             container_statuses: vec![],
         };
         let payload = PodPatch {
@@ -545,7 +549,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name: "made up".to_string(),
-            status: PodStatus::Running,
+            status: PodPhase::Running,
             container_statuses: vec![],
         };
         let payload = PodPatch {
@@ -571,7 +575,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name: n.name,
-            status: PodStatus::Running,
+            status: PodPhase::Running,
             container_statuses: vec![],
         };
         let payload = PodPatch {
@@ -720,7 +724,7 @@ mod tests {
         let state = new_state_with_store(Box::new(TestStore::new())).await;
         let mut payload = PodManifest::default();
         let container = ContainerSpec::default();
-        payload.spec.containers = vec![container.clone(), container];
+        payload.spec = vec![container.clone(), container];
 
         let app = pod_service(&state).await;
         let req = TestRequest::post()
@@ -748,7 +752,7 @@ mod tests {
         let resp = call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let pods: Vec<PodObject> = read_body_json(resp).await;
+        let pods: Vec<Pod> = read_body_json(resp).await;
         assert_eq!(pods.len(), 0, "There should be no pods");
     }
 

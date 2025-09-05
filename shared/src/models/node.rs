@@ -20,3 +20,16 @@ pub enum NodeStatus {
     Running,
     Stopped,
 }
+
+impl Default for Node {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: Uuid::new_v4().to_string(),
+            status: NodeStatus::Ready,
+            addr: "0.0.0.0:1000".to_string(),
+            started_at: Utc::now(),
+            last_heartbeat: Utc::now(),
+        }
+    }
+}

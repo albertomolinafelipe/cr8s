@@ -96,7 +96,7 @@ mod tests {
     use crate::{docker::test::TestDocker, models::Config, state::new_state_with};
     use shared::{
         api::{EventType, PodEvent},
-        models::PodObject,
+        models::pod::Pod,
     };
     use tokio::sync::mpsc;
 
@@ -104,7 +104,7 @@ mod tests {
     async fn test_modified_event() {
         let docker = Box::new(TestDocker::new());
         let state = new_state_with(Some(Config::default()), Some(docker));
-        let pod = PodObject::default();
+        let pod = Pod::default();
 
         let (tx, mut rx) = mpsc::channel(1);
         let event = PodEvent {
@@ -125,7 +125,7 @@ mod tests {
     async fn test_deleted_event() {
         let docker = Box::new(TestDocker::new());
         let state = new_state_with(Some(Config::default()), Some(docker));
-        let pod = PodObject::default();
+        let pod = Pod::default();
         state.put_pod(&pod);
 
         let (tx, mut rx) = mpsc::channel(1);
@@ -147,7 +147,7 @@ mod tests {
     async fn test_added_event() {
         let docker = Box::new(TestDocker::new());
         let state = new_state_with(Some(Config::default()), Some(docker));
-        let pod = PodObject::default();
+        let pod = Pod::default();
 
         let (tx, mut rx) = mpsc::channel(1);
         let event = PodEvent {

@@ -6,7 +6,7 @@ use super::errors::StoreError;
 use super::store::Store;
 use async_trait::async_trait;
 use dashmap::DashMap;
-use shared::models::{Node, Pod};
+use shared::models::{node::Node, pod::Pod};
 use uuid::Uuid;
 
 /// An in-memory implementation of `Store`, used for testing purposes.
