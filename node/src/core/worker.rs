@@ -40,7 +40,7 @@ pub async fn reconciliate(state: State, id: Uuid) {
         return;
     };
     // Check runtime state
-    if let Some(_) = state.get_pod_runtime(&pod.id) {
+    if let Some(_) = state.get_pod_runtime(&pod.metadata.id) {
         tracing::error!("Pod already stored in runtime state, not implemented");
         return;
     }

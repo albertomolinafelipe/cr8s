@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::models::{Node, PodObject, PodSpec, PodStatus, UserMetadata};
+use crate::models::{
+    node::Node,
+    pod::{ContainerSpec, Pod, PodPhase},
+};
 
 // --- Query Params ---
 
@@ -42,11 +45,16 @@ pub struct CreateResponse {
 
 // --- Pod Definitions ---
 
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+pub struct UserMetadata {
+    pub name: String,
+}
+
 /// Definition of a pod to be created, including metadata and spec.
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct PodManifest {
     pub metadata: UserMetadata,
-    pub spec: PodSpec,
+    pub spec: Vec<ContainerSpec>,
 }
 
 // --- Pod and Node Events ---
@@ -55,7 +63,7 @@ pub struct PodManifest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PodEvent {
     pub event_type: EventType,
-    pub pod: PodObject,
+    pub pod: Pod,
 }
 
 /// Event structure representing changes to a node.
@@ -97,6 +105,6 @@ pub enum PodField {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct PodStatusUpdate {
     pub node_name: String,
-    pub status: PodStatus,
+    pub status: PodPhase,
     pub container_statuses: Vec<(String, String)>,
 }

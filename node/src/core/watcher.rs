@@ -65,12 +65,12 @@ async fn register(state: State) -> Result<(), String> {
 /// Processes a single pod event by updating local state and forwarding the event to the worker.
 fn handle_event(state: State, event: PodEvent, tx: &Sender<WorkRequest>) {
     let req = WorkRequest {
-        id: event.pod.id,
+        id: event.pod.metadata.id,
         event: event.event_type.clone(),
     };
     match event.event_type {
         EventType::Modified => state.put_pod(&event.pod),
-        EventType::Deleted => state.delete_pod(&event.pod.id),
+        EventType::Deleted => state.delete_pod(&event.pod.metadata.id),
         _ => {
             tracing::error!("Unhandled event type: {:?}", event.event_type);
             return;
@@ -115,10 +115,10 @@ mod tests {
         handle_event(state.clone(), event, &tx);
 
         let req = rx.recv().await.expect("Should receive a work request");
-        assert_eq!(req.id, pod.id);
+        assert_eq!(req.id, pod.metadata.id);
         assert_eq!(req.event, EventType::Modified);
 
-        assert!(state.get_pod(&pod.id).is_some());
+        assert!(state.get_pod(&pod.metadata.id).is_some());
     }
 
     #[tokio::test]
@@ -137,10 +137,10 @@ mod tests {
         handle_event(state.clone(), event, &tx);
 
         let req = rx.recv().await.expect("Should receive a work request");
-        assert_eq!(req.id, pod.id);
+        assert_eq!(req.id, pod.metadata.id);
         assert_eq!(req.event, EventType::Deleted);
 
-        assert!(state.get_pod(&pod.id).is_none());
+        assert!(state.get_pod(&pod.metadata.id).is_none());
     }
 
     #[tokio::test]

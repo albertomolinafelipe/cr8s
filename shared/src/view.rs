@@ -6,7 +6,10 @@ use std::borrow::Cow;
 use chrono::Utc;
 use tabled::Tabled;
 
-use crate::models::{Node, NodeStatus, PodObject, PodStatus};
+use crate::models::{
+    node::{Node, NodeStatus},
+    pod::{Pod, PodPhase},
+};
 
 // --- Display impls for status enums ---
 
@@ -15,20 +18,21 @@ impl std::fmt::Display for NodeStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NodeStatus::Ready => write!(f, "Ready"),
+            NodeStatus::Running => write!(f, "Running"),
             NodeStatus::Stopped => write!(f, "Stopped"),
         }
     }
 }
 
-/// String representation of `PodStatus` for table output.
-impl std::fmt::Display for PodStatus {
+/// String representation of `PodPhase` for table output.
+impl std::fmt::Display for PodPhase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PodStatus::Pending => write!(f, "Pending"),
-            PodStatus::Running => write!(f, "Running"),
-            PodStatus::Failed => write!(f, "Failed"),
-            PodStatus::Succeeded => write!(f, "Succeeded"),
-            PodStatus::Unknown => write!(f, "Unknown"),
+            PodPhase::Pending => write!(f, "Pending"),
+            PodPhase::Running => write!(f, "Running"),
+            PodPhase::Failed => write!(f, "Failed"),
+            PodPhase::Succeeded => write!(f, "Succeeded"),
+            PodPhase::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -66,7 +70,7 @@ impl Tabled for Node {
 // --- Table display for PodObject ---
 
 /// Implements `Tabled` for `PodObject`, enabling CLI tabular display.
-impl Tabled for PodObject {
+impl Tabled for Pod {
     const LENGTH: usize = 5;
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
@@ -84,19 +88,20 @@ impl Tabled for PodObject {
 
         let total_containers = self.spec.containers.len();
 
-        let ready_count = if self.last_status_update.is_none() {
+        let ready_count = if self.status.last_update.is_none() {
             0
         } else {
-            self.container_status
+            self.status
+                .container_status
                 .iter()
                 .filter(|(_, status)| good_statuses.contains(&status.as_str()))
                 .count()
         };
 
         vec![
-            Cow::Owned(self.metadata.user.name.clone()),
+            Cow::Owned(self.metadata.name.clone()),
             Cow::Owned(format!("{}/{}", ready_count, total_containers)),
-            Cow::Owned(self.pod_status.to_string()),
+            Cow::Owned(self.status.phase.to_string()),
             Cow::Borrowed("0"),
             Cow::Owned(human_duration(
                 Utc::now()

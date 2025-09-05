@@ -7,7 +7,7 @@ use rand::seq::IteratorRandom;
 use reqwest::Client;
 use serde_json::Value;
 use shared::api::{EventType, NodeEvent, PodEvent, PodField, PodPatch};
-use shared::models::{Node, PodObject};
+use shared::models::{node::Node, pod::Pod};
 use shared::utils::watch_stream;
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, Sender};
@@ -41,7 +41,7 @@ pub async fn run() {
 #[derive(Debug)]
 struct SchedulerState {
     nodes: DashMap<String, Node>,
-    pods: DashMap<Uuid, PodObject>,
+    pods: DashMap<Uuid, Pod>,
     pod_map: DashMap<String, DashSet<Uuid>>,
     pod_tx: Sender<Uuid>,
     /// optional apiserver attribute for mock test
@@ -89,15 +89,15 @@ fn handle_pod_event(state: State, event: PodEvent) {
         return;
     }
     // add pod to map
-    state.pods.insert(event.pod.id, event.pod.clone());
+    state.pods.insert(event.pod.metadata.id, event.pod.clone());
     // store pod in unassigned group
     state
         .pod_map
         .entry("".to_string())
         .or_insert_with(DashSet::new)
-        .insert(event.pod.id);
+        .insert(event.pod.metadata.id);
     // send pod id to channel for scheduling
-    let _ = state.pod_tx.try_send(event.pod.id);
+    let _ = state.pod_tx.try_send(event.pod.metadata.id);
 }
 
 /// Handle node event: track node and attempt to schedule all unscheduled pods.
@@ -149,12 +149,12 @@ async fn schedule(state: State, id: Uuid) {
         .api_server
         .as_deref()
         .unwrap_or("http://localhost:7620");
-    let url = format!("{}/pods/{}", base_url, pod.metadata.user.name);
+    let url = format!("{}/pods/{}", base_url, pod.metadata.name);
 
     match client.patch(&url).json(&patch).send().await {
         Ok(resp) if resp.status().is_success() => {
             tracing::info!(
-                pod_name=%pod.metadata.user.name,
+                pod_name=%pod.metadata.name,
                 node_name=%node,
                 "Scheduled pod"
             );
@@ -214,7 +214,7 @@ mod tests {
         let mock_server = start_mock_server().await;
         let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
-        let pod = PodObject::default();
+        let pod = Pod::default();
         let node = Node::default();
 
         // Simulate node and pod event
@@ -235,16 +235,16 @@ mod tests {
         );
 
         // Verify pod is queued and eventually scheduled
-        assert!(state.pods.contains_key(&pod.id));
+        assert!(state.pods.contains_key(&pod.metadata.id));
 
         let to_be_scheduled_pod_id = rx.recv().await.expect("Expected pod ID");
-        assert_eq!(to_be_scheduled_pod_id, pod.id);
+        assert_eq!(to_be_scheduled_pod_id, pod.metadata.id);
 
-        schedule(state.clone(), pod.id).await;
+        schedule(state.clone(), pod.metadata.id).await;
 
         let node_pods = state.pod_map.get(&node.name);
         assert!(state.nodes.contains_key(&node.name));
-        assert!(node_pods.unwrap().contains(&pod.id));
+        assert!(node_pods.unwrap().contains(&pod.metadata.id));
     }
 
     #[tokio::test]
@@ -254,7 +254,7 @@ mod tests {
         let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
 
         // Simulate pod being added before any nodes exist
-        let pod = PodObject::default();
+        let pod = Pod::default();
         handle_pod_event(
             state.clone(),
             PodEvent {
@@ -265,7 +265,7 @@ mod tests {
 
         // Validate pod is marked as unscheduled
         let unscheduled_set = state.pod_map.get("");
-        assert!(unscheduled_set.unwrap().contains(&pod.id));
+        assert!(unscheduled_set.unwrap().contains(&pod.metadata.id));
 
         // Add node and verify scheduling occurs
         let node = Node::default();
@@ -280,9 +280,9 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let node_pods = state.pod_map.get(&node.name);
-        assert!(node_pods.unwrap().contains(&pod.id));
+        assert!(node_pods.unwrap().contains(&pod.metadata.id));
 
         let unscheduled = state.pod_map.get("");
-        assert!(!unscheduled.unwrap().contains(&pod.id));
+        assert!(!unscheduled.unwrap().contains(&pod.metadata.id));
     }
 }

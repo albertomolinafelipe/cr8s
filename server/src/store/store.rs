@@ -6,7 +6,7 @@
 
 use etcd_client::GetOptions;
 use serde::{Serialize, de::DeserializeOwned};
-use shared::models::{Node, PodObject};
+use shared::models::{node::Node, pod::Pod};
 use uuid::Uuid;
 
 use super::errors::StoreError;
@@ -16,9 +16,9 @@ use async_trait::async_trait;
 /// Trait for persistent store functionality (e.g., etcd, memory).
 #[async_trait]
 pub trait Store: Send + Sync {
-    async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError>;
-    async fn put_pod(&self, id: &Uuid, pod: &PodObject) -> Result<(), StoreError>;
-    async fn list_pods(&self) -> Result<Vec<PodObject>, StoreError>;
+    async fn get_pod(&self, id: Uuid) -> Result<Option<Pod>, StoreError>;
+    async fn put_pod(&self, id: &Uuid, pod: &Pod) -> Result<(), StoreError>;
+    async fn list_pods(&self) -> Result<Vec<Pod>, StoreError>;
     async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError>;
 
     async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError>;
@@ -134,14 +134,14 @@ impl EtcdStore {
 
 #[async_trait]
 impl Store for EtcdStore {
-    async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError> {
-        self.get_object::<PodObject>(&Self::pod_key(&id)).await
+    async fn get_pod(&self, id: Uuid) -> Result<Option<Pod>, StoreError> {
+        self.get_object::<Pod>(&Self::pod_key(&id)).await
     }
-    async fn put_pod(&self, id: &Uuid, pod: &PodObject) -> Result<(), StoreError> {
-        self.put_object::<PodObject>(&Self::pod_key(id), pod).await
+    async fn put_pod(&self, id: &Uuid, pod: &Pod) -> Result<(), StoreError> {
+        self.put_object::<Pod>(&Self::pod_key(id), pod).await
     }
-    async fn list_pods(&self) -> Result<Vec<PodObject>, StoreError> {
-        self.list_objects::<PodObject>(Self::pod_prefix()).await
+    async fn list_pods(&self) -> Result<Vec<Pod>, StoreError> {
+        self.list_objects::<Pod>(Self::pod_prefix()).await
     }
 
     async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError> {

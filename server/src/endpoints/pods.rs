@@ -12,9 +12,12 @@ use crate::State;
 use actix_web::{HttpResponse, Responder, web};
 use bytes::Bytes;
 use futures_util::StreamExt;
-use shared::api::{
-    CreateResponse, EventType, LogsQueryParams, PodEvent, PodField, PodManifest, PodPatch,
-    PodQueryParams, PodStatusUpdate,
+use shared::{
+    api::{
+        CreateResponse, EventType, LogsQueryParams, PodEvent, PodField, PodManifest, PodPatch,
+        PodQueryParams, PodStatusUpdate,
+    },
+    models::pod::PodSpec,
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -51,7 +54,7 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
                     event_type: EventType::Added,
                 };
                 if let Some(name) = node_name.as_deref() {
-                    if event.pod.node_name != name {
+                    if event.pod.spec.node_name != name {
                         continue;
                     }
                 }
@@ -62,7 +65,7 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
             let mut rx = state.pod_tx.subscribe();
             while let Ok(event) = rx.recv().await {
                 if let Some(name) = node_name.as_deref() {
-                    if event.pod.node_name != name {
+                    if event.pod.spec.node_name != name {
                         continue;
                     }
                 }
@@ -204,7 +207,12 @@ async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
         return HttpResponse::Conflict().body("Duplicate pod name");
     };
 
-    match state.add_pod(spec_obj.spec, spec_obj.metadata).await {
+    let pod_spec = PodSpec {
+        node_name: "".to_string(),
+        containers: spec_obj.spec,
+    };
+
+    match state.add_pod(pod_spec, spec_obj.metadata.into()).await {
         Ok(id) => {
             tracing::info!(
                 name=%pod_name,

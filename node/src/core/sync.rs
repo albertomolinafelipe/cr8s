@@ -9,7 +9,7 @@ use bollard::secret::ContainerStateStatusEnum;
 use reqwest::Client;
 use shared::{
     api::{PodField, PodPatch, PodStatusUpdate},
-    models::PodStatus,
+    models::pod::PodPhase,
 };
 use tokio::time;
 
@@ -48,7 +48,7 @@ pub async fn run_iteration(state: &State) -> Result<(), String> {
                 Ok(status) => status,
                 Err(err) => {
                     tracing::warn!(error=%err, "Failed to update pod runtime status in-memory");
-                    PodStatus::Unknown
+                    PodPhase::Unknown
                 }
             };
 
@@ -95,7 +95,7 @@ mod tests {
 
     use super::*;
     use bollard::secret::ContainerStateStatusEnum;
-    use shared::models::{ContainerSpec, PodObject, PodSpec};
+    use shared::models::pod::{ContainerSpec, Pod, PodSpec};
     use tokio::sync::Notify;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,

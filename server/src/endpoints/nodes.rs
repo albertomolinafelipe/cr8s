@@ -15,7 +15,7 @@ use actix_web::{
 use serde::Deserialize;
 use shared::{
     api::{EventType, NodeEvent, NodeRegisterReq},
-    models::{Node, NodeStatus},
+    models::node::{Node, NodeStatus},
 };
 use uuid::Uuid;
 

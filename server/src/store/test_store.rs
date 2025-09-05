@@ -6,12 +6,12 @@ use super::errors::StoreError;
 use super::store::Store;
 use async_trait::async_trait;
 use dashmap::DashMap;
-use shared::models::{Node, PodObject};
+use shared::models::{Node, Pod};
 use uuid::Uuid;
 
 /// An in-memory implementation of `Store`, used for testing purposes.
 pub struct TestStore {
-    pub pods: DashMap<Uuid, PodObject>,
+    pub pods: DashMap<Uuid, Pod>,
     pub nodes: DashMap<String, Node>,
 }
 
@@ -26,16 +26,16 @@ impl TestStore {
 
 #[async_trait]
 impl Store for TestStore {
-    async fn get_pod(&self, id: Uuid) -> Result<Option<PodObject>, StoreError> {
+    async fn get_pod(&self, id: Uuid) -> Result<Option<Pod>, StoreError> {
         Ok(self.pods.get(&id).map(|ref_entry| ref_entry.clone()))
     }
 
-    async fn put_pod(&self, id: &Uuid, pod: &PodObject) -> Result<(), StoreError> {
+    async fn put_pod(&self, id: &Uuid, pod: &Pod) -> Result<(), StoreError> {
         self.pods.insert(*id, pod.clone());
         Ok(())
     }
 
-    async fn list_pods(&self) -> Result<Vec<PodObject>, StoreError> {
+    async fn list_pods(&self) -> Result<Vec<Pod>, StoreError> {
         Ok(self
             .pods
             .iter()
