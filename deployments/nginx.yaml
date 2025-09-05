@@ -3,17 +3,17 @@ metadata:
   name: nginx-pod
 spec:
   containers:
-    - name: nginx
-      image: nginx:latest
-      ports:
-        - containerPort: 80
-      env:
-        - name: ENV
-          value: production
-        - name: DEBUG
-          value: "false"
-    - name: tinyproxy
-      image: vimagick/tinyproxy
+#   - name: nginx
+#     image: nginx:latest
+#     ports:
+#       - containerPort: 80
+#     env:
+#       - name: ENV
+#         value: production
+#       - name: DEBUG
+#         value: "false"
+    - name: test
+      image: busybox
       ports:
       - containerPort: 8888
 # ---

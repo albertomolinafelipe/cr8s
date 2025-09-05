@@ -188,6 +188,12 @@ impl R8s {
         pod.pod_status = status;
         pod.container_status = container_statuses.clone();
         self.store.put_pod(&id, &pod).await?;
+        // send event
+        let event = PodEvent {
+            event_type: EventType::Modified,
+            pod,
+        };
+        let _ = self.pod_tx.send(event);
         Ok(())
     }
 
