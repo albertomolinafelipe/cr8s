@@ -45,34 +45,38 @@ else
   CACHE_TO :=
 endif
 
+export DOCKER_BUILDKIT=1
+
 COMPOSE_FILE = docker/docker-compose.yml
+
+GUM_FLAGS = --show-error --spinner=minidot --spinner.foreground=\#ff6000
 
 .PHONY: all build build-% docker docker-% clean up down
 
 all: build-cli docker
 
 build-%:
+	@gum spin --title "Compiling $*" $(GUM_FLAGS) -- \
 	cargo build -p $(CRATE_$*) --release
-ifneq ($*,cli)
-else
-	cp target/release/$(CRATE_$*) .
-endif
+	@if [ "$*" = "cli" ]; then \
+		cp target/release/$(CRATE_$*) . ; \
+	fi
 
 build: build-cli build-server build-node
 
 docker: docker-server docker-node
 
 docker-server:
-	@echo -e "\033[0;32m--- CONTROL PLANE ---\033[0m"
-	DOCKER_BUILDKIT=1 docker buildx build \
+	@gum spin --title "Building server image" $(GUM_FLAGS) -- \
+	docker buildx build \
 		-t $(docker_image_server) \
 		$(CACHE_FROM) $(CACHE_TO) \
 		--load \
 		-f docker/Dockerfile.server .
 
 docker-node:
-	@echo -e "\033[0;32m--- NODE AGENT ---\033[0m"
-	DOCKER_BUILDKIT=1 docker buildx build \
+	@gum spin --title "Building node image" $(GUM_FLAGS) -- \
+	docker buildx build \
 		-t $(docker_image_node) \
 		$(CACHE_FROM) $(CACHE_TO) \
 		--load \

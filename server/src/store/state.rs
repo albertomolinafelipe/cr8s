@@ -14,7 +14,7 @@ use uuid::Uuid;
 use shared::{
     api::{EventType, NodeEvent, PodEvent},
     models::node::Node,
-    models::pod::{Metadata, Pod, PodPhase, PodSpec, PodStatus},
+    models::pod::{Metadata, Pod, PodSpec, PodStatus},
 };
 
 use crate::{State, store::cache::CacheManager};
@@ -171,20 +171,18 @@ impl R8s {
     /// Updates the runtime status of a pod, including container statuses.
     pub async fn update_pod_status(
         &self,
-        id: Uuid,
-        phase: PodPhase,
-        container_statuses: &mut Vec<(String, String)>,
+        id: &Uuid,
+        status: &mut PodStatus,
     ) -> Result<(), StoreError> {
         let mut pod = self
             .store
-            .get_pod(id)
+            .get_pod(*id)
             .await?
             .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
 
-        validate_container_statuses(&pod.spec, container_statuses);
+        validate_container_statuses(&pod.spec, &mut status.container_status);
+        pod.status = status.clone();
         pod.status.last_update = Some(Utc::now());
-        pod.status.phase = phase;
-        pod.status.container_status = container_statuses.clone();
         self.store.put_pod(&id, &pod).await?;
         // send event
         let event = PodEvent {

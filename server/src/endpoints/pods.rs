@@ -163,11 +163,7 @@ async fn update_status(
 
     // Check body container names match spec
     match state
-        .update_pod_status(
-            pod_id.clone(),
-            status_update.status.phase.clone(),
-            &mut status_update.status.container_status,
-        )
+        .update_pod_status(&pod_id, &mut status_update.status)
         .await
     {
         Ok(_) => {
