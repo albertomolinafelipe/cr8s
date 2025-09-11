@@ -13,4 +13,4 @@ Lightweight Kubernetes-Inspired Orchestrator in Rust
 
 ## Run locally
 
-- `make compose-up`
+- `make up [NODE=N] [GRAFANA={0|1}]` - To deploy compose file with N node agents
