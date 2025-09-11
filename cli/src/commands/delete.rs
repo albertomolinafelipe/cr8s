@@ -18,7 +18,6 @@ pub struct DeleteArgs {
 }
 
 /// Constructs a DELETE request based on the resource type and sends it to the server.
-#[tokio::main]
 pub async fn handle_delete(config: &Config, args: &DeleteArgs) {
     match args.resource {
         ResourceKind::Pod => {

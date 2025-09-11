@@ -67,8 +67,10 @@ impl Config {
             config.port = p;
         }
 
-        config.name =
-            env::var("NODE_NAME").unwrap_or_else(|_| format!("worker-node-{}", config.port));
+        config.name = env::var("NODE_NAME").unwrap_or_else(|_| {
+            let uuid = Uuid::new_v4().to_string();
+            format!("r8sagt-{}", &uuid[..4])
+        });
 
         if let Some(val) = env::var("SYNC_LOOP_INTERVAL")
             .ok()

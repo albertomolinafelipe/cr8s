@@ -17,7 +17,6 @@ pub struct GetArgs {
 }
 
 /// Sends a GET request for the specified resource type and prints a table view.
-#[tokio::main]
 pub async fn handle_get(config: &Config, args: &GetArgs) {
     let url = format!("{}/{}", &config.url, args.resource);
     let response = reqwest::get(&url).await;

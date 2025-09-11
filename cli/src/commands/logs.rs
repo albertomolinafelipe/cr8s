@@ -21,7 +21,6 @@ pub struct LogArgs {
 }
 
 /// Handles fetching and displaying pod logs.
-#[tokio::main]
 pub async fn handle_logs(config: &Config, args: &LogArgs) {
     let mut url = format!("{}/pods/{}/logs", config.url, args.pod_name);
     let mut query = vec![];

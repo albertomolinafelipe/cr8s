@@ -18,7 +18,7 @@ type State = web::Data<R8s>;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,server=trace"));
+        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn"));
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     let config = Config::from_env();

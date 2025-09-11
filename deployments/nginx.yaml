@@ -1,33 +1,11 @@
+---
+
 kind: Pod
 metadata:
-  name: nginx-pod
+  name: caddy-pod
 spec:
   containers:
-#   - name: nginx
-#     image: nginx:latest
-#     ports:
-#       - containerPort: 80
-#     env:
-#       - name: ENV
-#         value: production
-#       - name: DEBUG
-#         value: "false"
-    - name: test
-      image: busybox
+    - name: caddy
+      image: caddy:alpine
       ports:
-      - containerPort: 8888
-# ---
-# kind: Pod
-# metadata:
-#   name: lite-db-pod
-# spec:
-#   containers:
-#     - name: caddy
-#       image: caddy:alpine
-#       ports:
-#       - containerPort: 80
-
-#     - name: tinyproxy
-#       image: vimagick/tinyproxy
-#       ports:
-#       - containerPort: 8888
+      - containerPort: 80

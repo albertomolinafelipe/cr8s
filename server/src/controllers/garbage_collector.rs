@@ -47,35 +47,19 @@ async fn watch_pods(state: State) -> Result<(), ()> {
 /// Track pod and trigger scheduling.
 async fn handle_pod_event(_state: State, event: PodEvent) {
     match event.event_type {
-        EventType::Added => tracing::trace!("Added pod"),
-        EventType::Deleted => tracing::trace!("Deleted pod"),
-        EventType::Modified => {
-            tracing::trace!(status=%event.pod.status.phase, "Modified pod");
-            match event.pod.status.phase {
-                PodPhase::Failed | PodPhase::Succeeded => {
-                    let pod_id = event.pod.metadata.name;
-                    let url = format!("http://localhost:7620/pods/{}", pod_id);
+        EventType::Modified => match event.pod.status.phase {
+            PodPhase::Failed | PodPhase::Succeeded => {
+                let pod = event.pod.metadata.name;
+                let url = format!("http://localhost:7620/pods/{}", pod);
 
-                    tracing::info!("Deleting pod {} at {}", pod_id, url);
-
-                    match reqwest::Client::new().delete(&url).send().await {
-                        Ok(resp) => {
-                            let status = resp.status();
-                            let body = resp.text().await.unwrap_or_default();
-                            tracing::info!(
-                                "Delete response for pod {}: {} - {}",
-                                pod_id,
-                                status,
-                                body
-                            );
-                        }
-                        Err(err) => {
-                            tracing::error!("Failed to delete pod {}: {}", pod_id, err);
-                        }
-                    }
+                if let Err(err) = reqwest::Client::new().delete(&url).send().await {
+                    tracing::error!("Failed to delete pod {}: {}", pod, err);
+                    return;
                 }
-                _ => {}
+                tracing::info!(%pod, "Deleted");
             }
-        }
+            _ => {}
+        },
+        _ => {}
     }
 }

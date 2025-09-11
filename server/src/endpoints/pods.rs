@@ -165,15 +165,15 @@ async fn update_status(
     match state
         .update_pod_status(
             pod_id.clone(),
-            status_update.status.clone(),
-            &mut status_update.container_statuses,
+            status_update.status.phase.clone(),
+            &mut status_update.status.container_status,
         )
         .await
     {
         Ok(_) => {
             tracing::trace!(
                 pod=%pod_name,
-                status=%status_update.status,
+                status=%status_update.status.phase,
                 "Pod status successfully updated"
             );
             HttpResponse::Ok().finish()
@@ -392,9 +392,10 @@ mod tests {
     };
     use serde_json::Value;
     use shared::api::UserMetadata;
+    use shared::models::pod::PodStatus;
     use shared::models::{
         node::Node,
-        pod::{ContainerSpec, Pod, PodPhase},
+        pod::{ContainerSpec, Pod},
     };
 
     async fn pod_service(
@@ -500,8 +501,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name,
-            status: PodPhase::Running,
-            container_statuses: vec![],
+            status: PodStatus::default(),
         };
         let payload = PodPatch {
             pod_field: PodField::Status,
@@ -525,8 +525,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name: n.name,
-            status: PodPhase::Running,
-            container_statuses: vec![],
+            status: PodStatus::default(),
         };
         let payload = PodPatch {
             pod_field: PodField::Status,
@@ -548,8 +547,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name: "made up".to_string(),
-            status: PodPhase::Running,
-            container_statuses: vec![],
+            status: PodStatus::default(),
         };
         let payload = PodPatch {
             pod_field: PodField::Status,
@@ -574,8 +572,7 @@ mod tests {
 
         let update = PodStatusUpdate {
             node_name: n.name,
-            status: PodPhase::Running,
-            container_statuses: vec![],
+            status: PodStatus::default(),
         };
         let payload = PodPatch {
             pod_field: PodField::Status,

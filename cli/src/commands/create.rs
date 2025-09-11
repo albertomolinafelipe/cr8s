@@ -22,7 +22,6 @@ pub struct CreateArgs {
 }
 
 /// Reads a YAML file, parses objects, and posts them to the configured server.
-#[tokio::main]
 pub async fn handle_create(config: &Config, args: &CreateArgs) {
     // read content of the file
     let content = match fs::read_to_string(&args.file).await {
@@ -53,8 +52,8 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
         let manifest = object.spec.into_manifest(object.metadata);
 
         match client.post(&url).json(&manifest).send().await {
-            Ok(resp) => resp,
-            Err(_) => continue,
+            Ok(_) => {}
+            Err(err) => eprintln!("Error: {:?}", err),
         };
     }
 }
@@ -82,7 +81,7 @@ pub struct GenericManifest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "spec", rename_all = "PascalCase")]
 pub enum Spec {
-    Pod(Vec<ContainerSpec>),
+    Pod { containers: Vec<ContainerSpec> },
     Deployment,
 }
 
@@ -90,9 +89,9 @@ impl Spec {
     /// Converts the enum variant into a boxed `Manifest` implementation.
     pub fn into_manifest(self, metadata: UserMetadata) -> Box<dyn Manifest> {
         match self {
-            Spec::Pod(pod_spec) => Box::new(PodManifest {
+            Spec::Pod { containers } => Box::new(PodManifest {
                 metadata,
-                spec: pod_spec,
+                spec: containers,
             }),
             Spec::Deployment => unimplemented!("Deployment support not implemented yet"),
         }
@@ -103,7 +102,7 @@ impl std::fmt::Display for Spec {
     /// Formats the spec type as a lowercase kind string.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Spec::Pod(_) => write!(f, "pod"),
+            Spec::Pod { .. } => write!(f, "pod"),
             Spec::Deployment => write!(f, "deployment"),
         }
     }

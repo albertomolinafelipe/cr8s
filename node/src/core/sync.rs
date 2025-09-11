@@ -9,7 +9,7 @@ use bollard::secret::ContainerStateStatusEnum;
 use reqwest::Client;
 use shared::{
     api::{PodField, PodPatch, PodStatusUpdate},
-    models::pod::PodPhase,
+    models::pod::{PodPhase, PodStatus},
 };
 use tokio::time;
 
@@ -31,6 +31,16 @@ pub async fn run(state: State) -> Result<(), String> {
 pub async fn run_iteration(state: &State) -> Result<(), String> {
     let client = Client::new();
     for p in state.list_pod_runtimes().iter() {
+        let Some(pod) = state.get_pod(&p.id) else {
+            tracing::warn!("Failed to get pod from runtime");
+            return Ok(());
+        };
+        if pod.status.observed_generation != pod.metadata.generation {
+            continue;
+        }
+
+        tracing::trace!(pod=%pod.metadata.name, "Observed generation matches spec, sending sync");
+
         // Get map of container statuses
         let mut container_statuses_map: HashMap<String, ContainerStateStatusEnum> = HashMap::new();
         for c in p.containers.values() {
@@ -43,23 +53,26 @@ pub async fn run_iteration(state: &State) -> Result<(), String> {
         }
 
         // Update the in-memory runtime state for this pod
-        let pod_status =
-            match state.update_pod_runtime_status(&p.id, container_statuses_map.clone()) {
-                Ok(status) => status,
-                Err(err) => {
-                    tracing::warn!(error=%err, "Failed to update pod runtime status in-memory");
-                    PodPhase::Unknown
-                }
-            };
+        let phase = match state.update_pod_runtime_status(&p.id, container_statuses_map.clone()) {
+            Ok(status) => status,
+            Err(err) => {
+                tracing::warn!(error=%err, "Failed to update pod runtime status in-memory");
+                PodPhase::Unknown
+            }
+        };
 
         // Build and send status update to control plane
         let Ok(update) = serde_json::to_value(PodStatusUpdate {
-            status: pod_status,
-            container_statuses: container_statuses_map
-                .iter()
-                .map(|(k, v)| (k.clone(), v.to_string()))
-                .collect(),
             node_name: state.config.name.clone(),
+            status: PodStatus {
+                phase,
+                container_status: container_statuses_map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.to_string()))
+                    .collect(),
+                last_update: None,
+                observed_generation: pod.metadata.generation,
+            },
         }) else {
             continue;
         };

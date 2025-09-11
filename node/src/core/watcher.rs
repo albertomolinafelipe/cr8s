@@ -14,7 +14,6 @@ use tokio::time::{Duration, sleep};
 
 pub async fn run(state: State, tx: Sender<WorkRequest>) -> Result<(), String> {
     register(state.clone()).await?;
-    println!("r8s-node ready");
     tracing::debug!("Starting assignment controller");
     let url = format!(
         "{}/pods?watch=true&nodeName={}",
