@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::models::{
     node::Node,
-    pod::{ContainerSpec, Pod, PodPhase},
+    pod::{ContainerSpec, Pod, PodStatus},
 };
 
 // --- Query Params ---
@@ -105,8 +105,7 @@ pub enum PodField {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct PodStatusUpdate {
     pub node_name: String,
-    pub status: PodPhase,
-    pub container_statuses: Vec<(String, String)>,
+    pub status: PodStatus,
 }
 
 impl Default for UserMetadata {

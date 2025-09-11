@@ -6,6 +6,11 @@ Lightweight Kubernetes-Inspired Orchestrator in Rust
 
 ## Build Commands
 
-- `make build` — Compile cli tool
+- `make build` — Build all locally
 - `make docker` — Build Docker images for all components
-- `make docker-<component>` — Build Docker image for a specific component
+- `make docker-[server|node]` — Build Docker image for a specific component
+- `docker buildx create --name r8s-builder --use`
+
+## Run locally
+
+- `make up [NODE=N] [GRAFANA={0|1}]` - To deploy compose file with N node agents

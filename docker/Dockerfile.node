@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7
+
+FROM clux/muslrust:1.87.0-stable AS builder
+WORKDIR /app
+
+# Copy manifests
+COPY Cargo.toml Cargo.lock ./
+COPY server/Cargo.toml server/Cargo.toml
+COPY node/Cargo.toml   node/Cargo.toml
+COPY cli/Cargo.toml    cli/Cargo.toml
+COPY shared/Cargo.toml shared/Cargo.toml
+
+# Min entrypoints
+COPY server/src/main.rs server/src/main.rs
+COPY node/src/main.rs   node/src/main.rs
+COPY cli/src/main.rs    cli/src/main.rs
+COPY shared/src/lib.rs  shared/src/lib.rs
+
+# Fetch deps
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo fetch
+
+COPY . .
+RUN rustup target add x86_64-unknown-linux-musl
+
+# Build into cache and copy out
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    bash -eux -c '\
+      cargo build -p r8sagt --release --target x86_64-unknown-linux-musl && \
+      install -Dm755 target/x86_64-unknown-linux-musl/release/r8sagt /out/r8sagt \
+    '
+
+# ---- Runtime stage ----
+FROM docker:dind
+COPY --from=builder /out/r8sagt /usr/local/bin/r8sagt
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

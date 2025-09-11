@@ -1,3 +1,4 @@
 target/
 r8sctl
-docker-compose.generated.yml
+.dockerignore
+.buildx-cache/

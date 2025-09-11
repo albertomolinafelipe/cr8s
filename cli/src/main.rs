@@ -33,14 +33,14 @@ enum Commands {
     Logs(LogArgs),
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = R8sCtl::parse();
     let config = Config::from_env();
-
     match cli.command {
-        Commands::Get(args) => handle_get(&config, &args),
-        Commands::Create(args) => handle_create(&config, &args),
-        Commands::Delete(args) => handle_delete(&config, &args),
-        Commands::Logs(args) => handle_logs(&config, &args),
+        Commands::Get(args) => handle_get(&config, &args).await,
+        Commands::Create(args) => handle_create(&config, &args).await,
+        Commands::Delete(args) => handle_delete(&config, &args).await,
+        Commands::Logs(args) => handle_logs(&config, &args).await,
     };
 }

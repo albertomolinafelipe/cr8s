@@ -35,17 +35,28 @@ pub async fn run(state: State, mut rx: Receiver<WorkRequest>) -> Result<(), Stri
 /// Skips reconciliation if the runtime already exists.
 /// If Docker fails to start the pod, logs the error and exits gracefully.
 pub async fn reconciliate(state: State, id: Uuid) {
-    let Some(pod) = state.get_pod(&id) else {
+    let Some(mut pod) = state.get_pod(&id) else {
         tracing::warn!("Pod {}, not found in pod manager", id);
         return;
     };
-    // Check runtime state
-    if let Some(_) = state.get_pod_runtime(&pod.metadata.id) {
-        tracing::error!("Pod already stored in runtime state, not implemented");
+
+    tracing::trace!(
+        "Got pod {}, obs {} gen {}",
+        pod.metadata.name,
+        pod.status.observed_generation,
+        pod.metadata.generation
+    );
+    if pod.status.observed_generation == pod.metadata.generation {
         return;
     }
 
-    let runtime = match state.docker_mgr.start_pod(pod).await {
+    // Check runtime state
+    if let Some(_) = state.get_pod_runtime(&pod.metadata.id) {
+        tracing::warn!("Pod already stored in runtime state, not implemented");
+        return;
+    }
+
+    let runtime = match state.docker_mgr.start_pod(pod.clone()).await {
         Ok(runtime) => runtime,
         Err(err) => {
             tracing::error!(error=%err, "Failed to start pod");
@@ -67,6 +78,11 @@ pub async fn reconciliate(state: State, id: Uuid) {
         tracing::error!(error=%msg, "Could not add pod runtime to state");
         return;
     }
+
+    // Update observed generation and store new status
+    pod.status.observed_generation = pod.metadata.generation;
+    state.put_pod(&pod);
+    tracing::trace!("Updated observed generation");
 }
 
 /// Stops and removes a running pod.
