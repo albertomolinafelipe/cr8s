@@ -39,8 +39,6 @@ pub async fn run_iteration(state: &State) -> Result<(), String> {
             continue;
         }
 
-        tracing::trace!(pod=%pod.metadata.name, "Observed generation matches spec, sending sync");
-
         // Get map of container statuses
         let mut container_statuses_map: HashMap<String, ContainerStateStatusEnum> = HashMap::new();
         for c in p.containers.values() {

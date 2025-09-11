@@ -20,6 +20,7 @@
             pkgs.protobuf
             pkgs.rustfmt
             pkgs.act
+            pkgs.gum
           ];
 
           # Set for openssl-sys crate

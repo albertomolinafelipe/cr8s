@@ -40,12 +40,6 @@ pub async fn reconciliate(state: State, id: Uuid) {
         return;
     };
 
-    tracing::trace!(
-        "Got pod {}, obs {} gen {}",
-        pod.metadata.name,
-        pod.status.observed_generation,
-        pod.metadata.generation
-    );
     if pod.status.observed_generation == pod.metadata.generation {
         return;
     }
@@ -82,7 +76,6 @@ pub async fn reconciliate(state: State, id: Uuid) {
     // Update observed generation and store new status
     pod.status.observed_generation = pod.metadata.generation;
     state.put_pod(&pod);
-    tracing::trace!("Updated observed generation");
 }
 
 /// Stops and removes a running pod.
