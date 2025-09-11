@@ -6,7 +6,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use shared::{
     api::{EventType, PodEvent},
-    models::{PodObject, PodStatus},
+    models::pod::{Pod, PodPhase},
     utils::watch_stream,
 };
 use uuid::Uuid;
@@ -21,7 +21,7 @@ pub async fn run() {
 /// In-memory scheduler state shared across tasks.
 #[derive(Debug)]
 struct GCState {
-    _pods: DashMap<Uuid, PodObject>,
+    _pods: DashMap<Uuid, Pod>,
 }
 
 impl GCState {
@@ -50,10 +50,10 @@ async fn handle_pod_event(_state: State, event: PodEvent) {
         EventType::Added => tracing::trace!("Added pod"),
         EventType::Deleted => tracing::trace!("Deleted pod"),
         EventType::Modified => {
-            tracing::trace!(status=%event.pod.pod_status, "Modified pod");
-            match event.pod.pod_status {
-                PodStatus::Failed | PodStatus::Succeeded => {
-                    let pod_id = event.pod.metadata.user.name;
+            tracing::trace!(status=%event.pod.status.phase, "Modified pod");
+            match event.pod.status.phase {
+                PodPhase::Failed | PodPhase::Succeeded => {
+                    let pod_id = event.pod.metadata.name;
                     let url = format!("http://localhost:7620/pods/{}", pod_id);
 
                     tracing::info!("Deleting pod {} at {}", pod_id, url);
