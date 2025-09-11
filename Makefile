@@ -56,7 +56,6 @@ GUM_FLAGS = --show-error --spinner=minidot --spinner.foreground=\#ff6000
 all: build-cli docker
 
 build-%:
-	@gum spin --title "Compiling $*" $(GUM_FLAGS) -- \
 	cargo build -p $(CRATE_$*) --release
 	@if [ "$*" = "cli" ]; then \
 		cp target/release/$(CRATE_$*) . ; \
