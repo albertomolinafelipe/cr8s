@@ -1,26 +1,18 @@
-//! r8s-scheduler
-//! Watches pods and nodes, then assigns unscheduled pods to available nodes.
-//! Completely separate from other components
-
-use dashmap::{DashMap, DashSet};
-use rand::seq::IteratorRandom;
-use reqwest::Client;
-use serde_json::Value;
-use shared::api::{EventType, NodeEvent, PodEvent, PodField, PodPatch};
-use shared::models::{node::Node, pod::Pod};
+use dashmap::DashSet;
+use shared::api::{EventType, NodeEvent, PodEvent};
 use shared::utils::watch_stream;
-use std::sync::Arc;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
-type State = Arc<SchedulerState>;
+use super::flow::schedule;
+use super::state::{State, new_state};
 
 /// One thread watches unassigned pods, another node events
 /// They spawn task to schedule the unassigned pods
 pub async fn run() {
     tracing::debug!("Initializing");
     let (tx, mut rx) = mpsc::channel::<Uuid>(100);
-    let state = Arc::new(SchedulerState::new(tx, None));
+    let state = new_state(tx, None);
 
     // Watch nodes and pods in the background
     let _ = tokio::spawn(watch_nodes(state.clone()));
@@ -35,31 +27,6 @@ pub async fn run() {
             });
         }
     });
-}
-
-/// In-memory scheduler state shared across tasks.
-#[derive(Debug)]
-struct SchedulerState {
-    nodes: DashMap<String, Node>,
-    pods: DashMap<Uuid, Pod>,
-    pod_map: DashMap<String, DashSet<Uuid>>,
-    pod_tx: Sender<Uuid>,
-    /// optional apiserver attribute for mock test
-    /// otherwise we use hardcoded value
-    /// should be read from env, but idc
-    api_server: Option<String>,
-}
-
-impl SchedulerState {
-    fn new(pod_tx: Sender<Uuid>, api_server: Option<String>) -> Self {
-        Self {
-            nodes: DashMap::new(),
-            pods: DashMap::new(),
-            pod_map: DashMap::new(),
-            pod_tx,
-            api_server,
-        }
-    }
 }
 
 /// Watch for new nodes in apiserver
@@ -119,69 +86,6 @@ fn handle_node_event(state: State, event: NodeEvent) {
     }
 }
 
-/// Assigns a pod to a random available node by patching the API server.
-async fn schedule(state: State, id: Uuid) {
-    let pod = match state.pods.get(&id) {
-        Some(p) => p,
-        None => {
-            tracing::warn!(%id, "Pod not found in state");
-            return;
-        }
-    };
-
-    // Pick a random node
-    let node = match state.nodes.iter().choose(&mut rand::rng()) {
-        Some(entry) => entry.key().clone(),
-        None => {
-            tracing::warn!("No available nodes to schedule onto");
-            return;
-        }
-    };
-
-    // make patch call to api server
-    let patch = PodPatch {
-        pod_field: PodField::NodeName,
-        value: Value::String(node.clone()),
-    };
-
-    let client = Client::new();
-    let base_url = state
-        .api_server
-        .as_deref()
-        .unwrap_or("http://localhost:7620");
-    let url = format!("{}/pods/{}", base_url, pod.metadata.name);
-
-    match client.patch(&url).json(&patch).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            tracing::info!(
-                pod_name=%pod.metadata.name,
-                node_name=%node,
-                "Scheduled pod"
-            );
-            // Move pod to its assigned node group
-            state
-                .pod_map
-                .entry("".to_string())
-                .or_insert_with(DashSet::new)
-                .remove(&id);
-            state
-                .pod_map
-                .entry(node)
-                .or_insert_with(DashSet::new)
-                .insert(id);
-        }
-        Ok(resp) => {
-            tracing::error!(
-                status = %resp.status(),
-                "Failed to patch pod: non-success response"
-            );
-        }
-        Err(err) => {
-            tracing::error!("Failed to patch pod: {}", err);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -192,6 +96,7 @@ mod tests {
 
     use super::*;
     use shared::api::EventType;
+    use shared::models::{node::Node, pod::Pod};
     use wiremock::matchers::{method, path_regex};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -212,7 +117,7 @@ mod tests {
         // Setup state and mocked patch endpoint
         let (tx, mut rx) = mpsc::channel(10);
         let mock_server = start_mock_server().await;
-        let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
+        let state = new_state(tx, Some(mock_server.uri()));
 
         let pod = Pod::default();
         let node = Node::default();
@@ -251,7 +156,7 @@ mod tests {
     async fn test_handle_node_event_schedule_unscheduled_pods() {
         let (tx, _rx) = mpsc::channel(10);
         let mock_server = start_mock_server().await;
-        let state = Arc::new(SchedulerState::new(tx, Some(mock_server.uri())));
+        let state = new_state(tx, Some(mock_server.uri()));
 
         // Simulate pod being added before any nodes exist
         let pod = Pod::default();

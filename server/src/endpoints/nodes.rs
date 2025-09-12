@@ -139,7 +139,7 @@ mod tests {
     //!  - test_register_node_repeat_addr
 
     use crate::endpoints::helpers::collect_stream_events;
-    use crate::store::{state::new_state_with_store, test_store::TestStore};
+    use crate::store::{new_state_with_store, test_store::TestStore};
 
     use super::*;
     use actix_web::body::BoxBody;

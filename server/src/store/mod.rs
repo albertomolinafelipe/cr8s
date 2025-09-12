@@ -1,6 +1,10 @@
 mod cache;
 mod errors;
-pub mod state;
+mod state;
 mod store;
 #[cfg(test)]
 pub mod test_store;
+
+#[cfg(test)]
+pub use state::new_state_with_store;
+pub use state::{R8s, new_state};

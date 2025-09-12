@@ -10,13 +10,11 @@ services:
       - r8s-net
   r8sagt:
     image: r8sagt
-    # container_name: r8sagt
     privileged: true
     ports:
       - "7621"
     environment:
       NODE_PORT: 7621
-      # NODE_NAME: "r8sagt"
       R8S_SERVER_PORT: 7620
       R8S_SERVER_HOST: "r8scp"
       RUST_LOG: r8sagt=trace

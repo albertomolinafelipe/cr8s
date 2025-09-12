@@ -12,7 +12,7 @@ use shared::models::pod::{Pod, PodPhase};
 use uuid::Uuid;
 
 use crate::{
-    docker::manager::{DockerClient, DockerManager},
+    docker::{DockerClient, DockerManager},
     models::{Config, PodRuntime},
 };
 

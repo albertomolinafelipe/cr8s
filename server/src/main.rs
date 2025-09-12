@@ -10,7 +10,7 @@ mod endpoints;
 mod scheduler;
 mod store;
 
-use store::state::{R8s, new_state};
+use store::{R8s, new_state};
 
 const DEFAULT_PORT: u16 = 7620;
 type State = web::Data<R8s>;
@@ -24,14 +24,11 @@ async fn main() -> std::io::Result<()> {
     let config = Config::from_env();
     let state: State = new_state().await;
 
-    // Start background scheduler and drift controller
-    if config.run_scheduler {
-        tokio::spawn(scheduler::run());
-    }
-    if config.run_gc {
-        tokio::spawn(controllers::garbage_collector::run());
-    }
+    // Start background scheduler and garbage collector
+    tokio::spawn(scheduler::run());
+    tokio::spawn(controllers::garbage_collector::run());
 
+    // Start apiserver
     let server = HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
@@ -47,10 +44,10 @@ async fn root() -> impl Responder {
     HttpResponse::Ok().body("Hello from r8s-server")
 }
 
+// ------------
+
 struct Config {
     port: u16,
-    run_scheduler: bool,
-    run_gc: bool,
 }
 
 impl Config {
@@ -60,12 +57,6 @@ impl Config {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_PORT),
-
-            run_scheduler: env::var("RUN_SCHEDULER")
-                .map(|v| v != "false")
-                .unwrap_or(true),
-
-            run_gc: env::var("RUN_GC").map(|v| v != "false").unwrap_or(true),
         }
     }
 }
