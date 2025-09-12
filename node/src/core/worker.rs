@@ -96,6 +96,9 @@ async fn delete(state: State, id: Uuid) {
         Ok(()) => {}
         Err(err) => tracing::error!(error=%err, "Failed to delete pod"),
     };
+
+    state.delete_pod(&id);
+    tracing::info!(pod_name=%pod_runtime.name, "Deleted pod");
 }
 
 #[cfg(test)]

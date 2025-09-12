@@ -1,3 +1,11 @@
+kind: Pod
+metadata:
+  name: busy-pod
+spec:
+  containers:
+    - name: busybox
+      image: busybox:latest
+
 ---
 
 kind: Pod

@@ -49,9 +49,11 @@ export DOCKER_BUILDKIT=1
 
 COMPOSE_FILE = docker/docker-compose.yml
 
-GUM_FLAGS = --show-error --spinner=minidot --spinner.foreground=\#ff6000
+GUM_FLAGS = --show-error --spinner=minidot --spinner.foreground 10
 
 .PHONY: all build build-% docker docker-% clean up down
+
+# ------------------ COMPILE LOCALLY
 
 all: build-cli docker
 
@@ -63,25 +65,37 @@ build-%:
 
 build: build-cli build-server build-node
 
+# ------------------ BUILD IMAGES
+
 docker: docker-server docker-node
 
 docker-server:
-	@gum spin --title "Building server image" $(GUM_FLAGS) -- \
-	docker buildx build \
-		-t $(docker_image_server) \
-		$(CACHE_FROM) $(CACHE_TO) \
-		--load \
-		-f docker/Dockerfile.server .
+	@start=$$(date +%s); \
+	gum spin --title "Building server image" $(GUM_FLAGS) -- \
+		docker buildx build \
+			-t $(docker_image_server) \
+			$(CACHE_FROM) $(CACHE_TO) \
+			--load \
+			-f docker/Dockerfile.server .; \
+	end=$$(date +%s); \
+	elapsed=$$((end - start)); \
+	gum style --foreground 10 "> Building server image ($${elapsed}s)"
+
 
 docker-node:
-	@gum spin --title "Building node image" $(GUM_FLAGS) -- \
-	docker buildx build \
-		-t $(docker_image_node) \
-		$(CACHE_FROM) $(CACHE_TO) \
-		--load \
-		-f docker/Dockerfile.node .
+	@start=$$(date +%s); \
+	gum spin --title "Building node image" $(GUM_FLAGS) -- \
+		docker buildx build \
+			-t $(docker_image_node) \
+			$(CACHE_FROM) $(CACHE_TO) \
+			--load \
+			-f docker/Dockerfile.node .; \
+	end=$$(date +%s); \
+	elapsed=$$((end - start)); \
+	gum style --foreground 10 "> Building node image ($${elapsed}s)"
 
-# Toggle grafana
+# ------------------ COMPOSE UP/DOWN
+
 ifeq ($(GRAFANA),1)
   COMPOSE_PROFILES := grafana
 else
@@ -99,4 +113,3 @@ down:
 clean:
 	cargo clean
 	rm -rf $(BUILD_CACHE)
-

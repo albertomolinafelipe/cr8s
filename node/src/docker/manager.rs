@@ -209,7 +209,6 @@ impl DockerClient for DockerManager {
                 tracing::warn!(id=%id, error=%e, "Failed to stop container");
                 DockerError::ContainerStopError(e.to_string())
             })?;
-            tracing::debug!(id=%id, "Stopped container");
 
             docker.remove_container(cid, None).await.map_err(|e| {
                 tracing::warn!(id=%id, error=%e, "Failed to remove container");
