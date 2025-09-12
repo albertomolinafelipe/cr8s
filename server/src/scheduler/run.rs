@@ -7,6 +7,9 @@ use uuid::Uuid;
 use super::flow::schedule;
 use super::state::{State, new_state};
 
+const PODS_URI: &str = "http://localhost:7620/pods?watch=true";
+const NODES_URI: &str = "http://localhost:7620/nodes?watch=true";
+
 /// One thread watches unassigned pods, another node events
 /// They spawn task to schedule the unassigned pods
 pub async fn run() {
@@ -31,8 +34,7 @@ pub async fn run() {
 
 /// Watch for new nodes in apiserver
 async fn watch_pods(state: State) -> Result<(), ()> {
-    let url = "http://localhost:7620/pods?nodeName=&watch=true".to_string();
-    watch_stream::<PodEvent, _>(&url, move |event| {
+    watch_stream::<PodEvent, _>(PODS_URI, move |event| {
         handle_pod_event(state.clone(), event);
     })
     .await;
@@ -41,8 +43,7 @@ async fn watch_pods(state: State) -> Result<(), ()> {
 
 /// Watch pods in apiserver
 async fn watch_nodes(state: State) -> Result<(), ()> {
-    let url = "http://localhost:7620/nodes?watch=true".to_string();
-    watch_stream::<NodeEvent, _>(&url, move |event| {
+    watch_stream::<NodeEvent, _>(NODES_URI, move |event| {
         handle_node_event(state.clone(), event);
     })
     .await;
@@ -51,24 +52,33 @@ async fn watch_nodes(state: State) -> Result<(), ()> {
 
 /// Track pod and trigger scheduling.
 fn handle_pod_event(state: State, event: PodEvent) {
-    if event.event_type != EventType::Added {
-        tracing::error!("Scheduler only implemented new pods");
-        return;
-    }
-    // add pod to map
-    state.pods.insert(event.pod.metadata.id, event.pod.clone());
-    // store pod in unassigned group
-    state
-        .pod_map
-        .entry("".to_string())
-        .or_insert_with(DashSet::new)
-        .insert(event.pod.metadata.id);
-    // send pod id to channel for scheduling
-    let _ = state.pod_tx.try_send(event.pod.metadata.id);
+    match event.event_type {
+        EventType::Added => {
+            if event.pod.spec.node_name != "" {
+                return;
+            }
+            // add pod to map
+            state.pods.insert(event.pod.metadata.id, event.pod.clone());
+            // store pod in unassigned group
+            state
+                .pod_map
+                .entry("".to_string())
+                .or_insert_with(DashSet::new)
+                .insert(event.pod.metadata.id);
+            // send pod id to channel for scheduling
+            let _ = state.pod_tx.try_send(event.pod.metadata.id);
+        }
+        EventType::Deleted => state.delete_pod(&event.pod.metadata.id),
+        EventType::Modified => { /*TODO*/ }
+    };
 }
 
 /// Handle node event: track node and attempt to schedule all unscheduled pods.
 fn handle_node_event(state: State, event: NodeEvent) {
+    if event.event_type != EventType::Added {
+        tracing::warn!("Scheduler only implements `Add` node events");
+        return;
+    }
     // Insert new node
     state
         .nodes

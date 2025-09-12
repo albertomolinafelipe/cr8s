@@ -33,4 +33,16 @@ impl SchedulerState {
             api_server,
         }
     }
+
+    pub fn delete_pod(&self, id: &Uuid) {
+        if let Some((_, pod)) = self.pods.remove(id) {
+            let node_name = pod.spec.node_name;
+
+            if let Some(set) = self.pod_map.get(&node_name) {
+                set.remove(id);
+            }
+        } else {
+            tracing::warn!("Failed to delete pod");
+        }
+    }
 }
