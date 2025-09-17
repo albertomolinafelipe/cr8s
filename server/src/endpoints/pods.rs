@@ -154,13 +154,13 @@ async fn update_status(
         Some(set) if set.contains(&pod_id) => {}
         _ => return HttpResponse::Unauthorized().finish(),
     }
-
     // Update node heartbeat
     if let Err(error) = state.update_node_heartbeat(&status_update.node_name).await {
         tracing::warn!(error=%error, "Failed to update node heartbeat");
         // return error.to_http_response();
     }
 
+    tracing::trace!("Update pod status");
     // Check body container names match spec
     match state
         .update_pod_status(&pod_id, &mut status_update.status)

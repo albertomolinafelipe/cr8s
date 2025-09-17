@@ -251,7 +251,6 @@ impl R8s {
                 "Node {} not found in store",
                 node_name
             )))?;
-
         node.last_heartbeat = Utc::now();
         self.store.put_node(node_name, &node).await
     }

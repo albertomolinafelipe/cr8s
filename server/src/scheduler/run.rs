@@ -1,4 +1,3 @@
-use dashmap::DashSet;
 use shared::api::{EventType, NodeEvent, PodEvent};
 use shared::utils::watch_stream;
 use tokio::sync::mpsc;
@@ -24,9 +23,9 @@ pub async fn run() {
     // Handle scheduling of pods via channel
     tokio::spawn(async move {
         while let Some(pod_id) = rx.recv().await {
-            let app_state = state.clone();
+            let scheduler_state = state.clone();
             tokio::spawn(async move {
-                schedule(app_state, pod_id).await;
+                schedule(scheduler_state, pod_id).await;
             });
         }
     });
@@ -57,16 +56,7 @@ fn handle_pod_event(state: State, event: PodEvent) {
             if event.pod.spec.node_name != "" {
                 return;
             }
-            // add pod to map
-            state.pods.insert(event.pod.metadata.id, event.pod.clone());
-            // store pod in unassigned group
-            state
-                .pod_map
-                .entry("".to_string())
-                .or_insert_with(DashSet::new)
-                .insert(event.pod.metadata.id);
-            // send pod id to channel for scheduling
-            let _ = state.pod_tx.try_send(event.pod.metadata.id);
+            state.add_pod(&event.pod);
         }
         EventType::Deleted => state.delete_pod(&event.pod.metadata.id),
         EventType::Modified => { /*TODO*/ }
@@ -80,9 +70,8 @@ fn handle_node_event(state: State, event: NodeEvent) {
         return;
     }
     // Insert new node
-    state
-        .nodes
-        .insert(event.node.name.clone(), event.node.clone());
+    state.add_node(&event.node);
+
     // If there are unscheduled pods run scheduling loop
     // This could happen if no nodes where registered when those pods where created
     if let Some(pods) = state.pod_map.get("") {

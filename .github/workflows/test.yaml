@@ -28,7 +28,7 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
     - name: Compile all components
-      run: make build
+      run: make build CI=1
     
     - name: Install cargo-nextest
       run: cargo install cargo-nextest --locked

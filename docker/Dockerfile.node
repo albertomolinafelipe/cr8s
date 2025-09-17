@@ -38,4 +38,10 @@ FROM docker:dind
 COPY --from=builder /out/r8sagt /usr/local/bin/r8sagt
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+ARG GIT_COMMIT
+ARG BUILD_DATE
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
+LABEL org.opencontainers.image.created=$BUILD_DATE
+
 ENTRYPOINT ["/entrypoint.sh"]

@@ -36,4 +36,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Runtime
 FROM scratch
 COPY --from=builder /out/r8scp /usr/local/bin/r8scp
+
+ARG GIT_COMMIT
+ARG BUILD_DATE
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
+LABEL org.opencontainers.image.created=$BUILD_DATE
+
 ENTRYPOINT ["/usr/local/bin/r8scp"]

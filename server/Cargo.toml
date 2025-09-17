@@ -31,9 +31,7 @@ bytes = "1.10.1"
 rand = "0.9.1"
 
 # Storage
-etcd-client = "0.15"
-
-# Concurrent hashmap
+etcd-client = "0.16"
 
 # logging
 tracing = "0.1"

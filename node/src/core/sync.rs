@@ -20,7 +20,6 @@ use crate::state::State;
 /// This continuously polls container states via the Docker manager and sends status updates
 /// to the control plane via PATCH requests.
 pub async fn run(state: State) -> Result<(), String> {
-    tracing::info!(sync=%state.config.sync_loop, "Starting sync loop");
     let mut interval = time::interval(Duration::from_secs(state.config.sync_loop.into()));
     loop {
         interval.tick().await;
