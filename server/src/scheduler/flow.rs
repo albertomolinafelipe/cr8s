@@ -49,27 +49,39 @@ pub fn best_node(state: &State, pod: &Pod) -> Option<String> {
         return None;
     }
 
-    let mut best: Option<(String, u64, u64)> = None;
+    // best = (node_name, pod_count, free_cpu, free_mem)
+    let mut best: Option<(String, usize, u64, u64)> = None;
 
     for node_name in candidates {
         if let Some(node_res) = state.node_resources.get(&node_name) {
             let free_cpu = node_res.cpu - pod_res.cpu;
             let free_mem = node_res.mem - pod_res.mem;
 
+            // number of active pods on this node
+            let pod_count = state
+                .pod_map
+                .get(&node_name)
+                .map(|set| set.len())
+                .unwrap_or(0);
+
             match &best {
                 None => {
-                    best = Some((node_name, free_cpu, free_mem));
+                    best = Some((node_name, pod_count, free_cpu, free_mem));
                 }
-                Some((_, best_cpu, best_mem)) => {
-                    if free_cpu > *best_cpu || (free_cpu == *best_cpu && free_mem > *best_mem) {
-                        best = Some((node_name, free_cpu, free_mem));
+                Some((_, best_count, best_cpu, best_mem)) => {
+                    if pod_count < *best_count
+                        || (pod_count == *best_count
+                            && (free_cpu > *best_cpu
+                                || (free_cpu == *best_cpu && free_mem > *best_mem)))
+                    {
+                        best = Some((node_name, pod_count, free_cpu, free_mem));
                     }
                 }
             }
         }
     }
 
-    best.map(|(node, _, _)| node)
+    best.map(|(node, _, _, _)| node)
 }
 
 /// Assigns a pod to the best available node by patching the API server.

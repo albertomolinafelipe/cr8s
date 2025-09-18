@@ -24,9 +24,7 @@ pub async fn run() {
     tokio::spawn(async move {
         while let Some(pod_id) = rx.recv().await {
             let scheduler_state = state.clone();
-            tokio::spawn(async move {
-                schedule(scheduler_state, pod_id).await;
-            });
+            schedule(scheduler_state, pod_id).await;
         }
     });
 }

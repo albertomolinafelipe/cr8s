@@ -160,7 +160,6 @@ async fn update_status(
         // return error.to_http_response();
     }
 
-    tracing::trace!("Update pod status");
     // Check body container names match spec
     match state
         .update_pod_status(&pod_id, &mut status_update.status)
@@ -196,7 +195,6 @@ async fn update_status(
 async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
     let spec_obj = body.into_inner();
     let pod_name = spec_obj.metadata.name.clone();
-    tracing::debug!(name=%pod_name, "Received pod manifest");
 
     if state.cache.pod_name_exists(&spec_obj.metadata.name) {
         return HttpResponse::Conflict().body("Duplicate pod name");

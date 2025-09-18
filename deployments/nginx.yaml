@@ -5,3 +5,11 @@ spec:
   containers:
     - name: small
       image: busybox:latest
+---
+kind: Pod
+metadata:
+  name: cont-pod
+spec:
+  containers:
+    - name: med
+      image: caddy:latest
