@@ -4,137 +4,141 @@ use shared::{
     api::{PodField, PodPatch},
     models::pod::Pod,
 };
-use uuid::Uuid;
 
-use super::state::State;
+use super::{
+    filter::FilterOptions,
+    scorer::{Score, Scorer},
+    state::State,
+};
 
-/// Returns available nodes
-/// Just checks cpu and mem for now
-pub fn filter_nodes(state: &State, pod: &Pod) -> Vec<String> {
-    let mut candidates = Vec::new();
-
-    // get the pod's simulated resource requirements
-    let Some(pod_res) = state.pod_resources.get(&pod.metadata.id) else {
-        tracing::warn!(pod_name=%pod.metadata.name, "Pod has no simulated resources");
-        return candidates;
-    };
-
-    // iterate through nodes and check capacity
-    for entry in state.nodes.iter() {
-        let node_name = entry.key();
-        if let Some(node_res) = state.node_resources.get(node_name) {
-            if node_res.cpu >= pod_res.cpu && node_res.mem >= pod_res.mem {
-                candidates.push(node_name.clone());
-            }
-        }
-    }
-
-    candidates
+/// Scheduling flow for a single pod: filters candidate nodes,
+/// scores them, and binds the pod if a node is chosen
+pub struct SchedulerFlow {
+    state: State,
+    pod: Pod,
+    candidates: Vec<(String, f64)>,
+    pub chosen: Option<String>,
+    pub accepted: bool,
+    filter_option: FilterOptions,
+    scorer: Scorer,
 }
 
-/// Returns the name of the best node for this pod,
-/// defined as the node with the most free CPU+mem after assignment.
-pub fn best_node(state: &State, pod: &Pod) -> Option<String> {
-    let pod_res = match state.pod_resources.get(&pod.metadata.id) {
-        Some(r) => r.clone(),
-        None => {
-            tracing::warn!(pod_name=%pod.metadata.name, "Pod has no simulated resources");
-            return None;
+impl SchedulerFlow {
+    pub fn new(
+        state: &State,
+        pod: Pod,
+        filter_option: Option<FilterOptions>,
+        scorer: Option<Scorer>,
+    ) -> Self {
+        Self {
+            state: state.clone(),
+            pod,
+            candidates: Vec::new(),
+            chosen: None,
+            accepted: false,
+            filter_option: filter_option.unwrap_or(FilterOptions::Basic),
+            scorer: scorer.unwrap_or(Scorer::Basic),
         }
-    };
-
-    // only consider feasible nodes
-    let candidates = filter_nodes(state, pod);
-    if candidates.is_empty() {
-        return None;
     }
 
-    // best = (node_name, pod_count, free_cpu, free_mem)
-    let mut best: Option<(String, usize, u64, u64)> = None;
+    pub async fn execute(self) -> Self {
+        self.filter().score().bind().await
+    }
 
-    for node_name in candidates {
-        if let Some(node_res) = state.node_resources.get(&node_name) {
-            let free_cpu = node_res.cpu - pod_res.cpu;
-            let free_mem = node_res.mem - pod_res.mem;
+    /// Apply the filter to generate an initial set of candidate nodes.
+    fn filter(mut self) -> Self {
+        self.filter_option
+            .filter(&self.state, &self.pod, &mut self.candidates);
+        self
+    }
 
-            // number of active pods on this node
-            let pod_count = state
-                .pod_map
-                .get(&node_name)
-                .map(|set| set.len())
-                .unwrap_or(0);
+    /// Score candidate nodes and pick the best one (if any).
+    fn score(mut self) -> Self {
+        if self.candidates.is_empty() {
+            return self;
+        }
 
-            match &best {
-                None => {
-                    best = Some((node_name, pod_count, free_cpu, free_mem));
-                }
-                Some((_, best_count, best_cpu, best_mem)) => {
-                    if pod_count < *best_count
-                        || (pod_count == *best_count
-                            && (free_cpu > *best_cpu
-                                || (free_cpu == *best_cpu && free_mem > *best_mem)))
-                    {
-                        best = Some((node_name, pod_count, free_cpu, free_mem));
+        let Some(pod_res) = self
+            .state
+            .pod_resources
+            .get(&self.pod.metadata.id)
+            .map(|r| r.clone())
+        else {
+            tracing::warn!(pod_name=%self.pod.metadata.name, "Pod has no simulated resources");
+            return self;
+        };
+
+        let mut best: Option<(String, Score)> = None;
+
+        for (node_name, score) in self.candidates.iter_mut() {
+            if let Some(node_res) = self.state.node_resources.get(node_name) {
+                let free_cpu = node_res.cpu.saturating_sub(pod_res.cpu);
+                let free_mem = node_res.mem.saturating_sub(pod_res.mem);
+
+                let pod_count = self
+                    .state
+                    .pod_map
+                    .get(node_name)
+                    .map(|set| set.len())
+                    .unwrap_or(0);
+
+                *score = self.scorer.score(pod_count, free_cpu, free_mem);
+
+                match &best {
+                    None => best = Some((node_name.clone(), *score)),
+                    Some((_, best_score)) if *score > *best_score => {
+                        best = Some((node_name.clone(), *score))
                     }
+                    _ => {}
                 }
             }
         }
+
+        if let Some((node, _)) = best {
+            self.chosen = Some(node);
+        }
+        self
     }
 
-    best.map(|(node, _, _, _)| node)
-}
+    /// Bind the pod to the chosen node by patching the API server.
+    async fn bind(mut self) -> Self {
+        let Some(ref node) = self.chosen else {
+            return self;
+        };
 
-/// Assigns a pod to the best available node by patching the API server.
-pub async fn schedule(state: State, id: Uuid) {
-    let pod = match state.pods.get(&id) {
-        Some(p) => p,
-        None => {
-            tracing::warn!(%id, "Pod not found in state");
-            return;
-        }
-    };
+        // make patch call to api server
+        let patch = PodPatch {
+            pod_field: PodField::NodeName,
+            value: Value::String(node.clone()),
+        };
 
-    // Pick the best node among candidates
-    let node = match best_node(&state, &pod) {
-        Some(n) => n,
-        None => {
-            tracing::warn!(pod_name=%pod.metadata.name, "No suitable node found after scoring");
-            return;
-        }
-    };
+        let client = Client::new();
+        let base_url = self
+            .state
+            .api_server
+            .as_deref()
+            .unwrap_or("http://localhost:7620");
+        let url = format!("{}/pods/{}", base_url, self.pod.metadata.name);
 
-    // make patch call to api server
-    let patch = PodPatch {
-        pod_field: PodField::NodeName,
-        value: Value::String(node.clone()),
-    };
-
-    let client = Client::new();
-    let base_url = state
-        .api_server
-        .as_deref()
-        .unwrap_or("http://localhost:7620");
-    let url = format!("{}/pods/{}", base_url, pod.metadata.name);
-
-    match client.patch(&url).json(&patch).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            tracing::info!(
-                pod=%pod.metadata.name,
-                %node,
-                "Scheduled"
-            );
-            drop(pod);
-            // Move pod to its assigned node group
-            state.assign_pod(&id, &node);
+        match client.patch(&url).json(&patch).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!(
+                    pod=%self.pod.metadata.name,
+                    %node,
+                    "Scheduled"
+                );
+                self.accepted = true;
+            }
+            Ok(resp) => {
+                tracing::error!(
+                    status = %resp.status(),
+                    "Failed to patch pod: non-success response"
+                );
+            }
+            Err(err) => {
+                tracing::error!("Failed to patch pod: {}", err);
+            }
         }
-        Ok(resp) => {
-            tracing::error!(
-                status = %resp.status(),
-                "Failed to patch pod: non-success response"
-            );
-        }
-        Err(err) => {
-            tracing::error!("Failed to patch pod: {}", err);
-        }
+        self
     }
 }

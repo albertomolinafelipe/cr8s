@@ -3,14 +3,16 @@ use shared::utils::watch_stream;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use super::flow::schedule;
-use super::state::{State, new_state};
+use super::{
+    flow::SchedulerFlow,
+    state::{State, new_state},
+};
 
 const PODS_URI: &str = "http://localhost:7620/pods?watch=true";
 const NODES_URI: &str = "http://localhost:7620/nodes?watch=true";
 
-/// One thread watches unassigned pods, another node events
-/// They spawn task to schedule the unassigned pods
+/// Starts the scheduler: spawns watchers for pods/nodes and
+/// schedules pods received via the internal channel.
 pub async fn run() {
     tracing::debug!("Initializing");
     let (tx, mut rx) = mpsc::channel::<Uuid>(100);
@@ -23,16 +25,35 @@ pub async fn run() {
     // Handle scheduling of pods via channel
     tokio::spawn(async move {
         while let Some(pod_id) = rx.recv().await {
-            let scheduler_state = state.clone();
-            schedule(scheduler_state, pod_id).await;
+            let sched_state = state.clone();
+            schedule(sched_state, pod_id).await;
         }
     });
+}
+
+/// Assigns a pod to the best available node by patching the API server.
+async fn schedule(state: State, id: Uuid) {
+    let pod = match state.pods.get(&id) {
+        Some(p) => p.clone(),
+        None => {
+            tracing::warn!(%id, "Pod not found in state");
+            return;
+        }
+    };
+
+    let flow = SchedulerFlow::new(&state, pod, None, None).execute().await;
+
+    if let (true, Some(node)) = (flow.accepted, &flow.chosen) {
+        state.assign_pod(&id, node);
+    } else {
+        tracing::error!("Could not schedule pod");
+    }
 }
 
 /// Watch for new nodes in apiserver
 async fn watch_pods(state: State) -> Result<(), ()> {
     watch_stream::<PodEvent, _>(PODS_URI, move |event| {
-        handle_pod_event(state.clone(), event);
+        handle_pod_event(&state, event);
     })
     .await;
     Ok(())
@@ -41,14 +62,14 @@ async fn watch_pods(state: State) -> Result<(), ()> {
 /// Watch pods in apiserver
 async fn watch_nodes(state: State) -> Result<(), ()> {
     watch_stream::<NodeEvent, _>(NODES_URI, move |event| {
-        handle_node_event(state.clone(), event);
+        handle_node_event(&state, event);
     })
     .await;
     Ok(())
 }
 
 /// Track pod and trigger scheduling.
-fn handle_pod_event(state: State, event: PodEvent) {
+fn handle_pod_event(state: &State, event: PodEvent) {
     match event.event_type {
         EventType::Added => {
             if event.pod.spec.node_name != "" {
@@ -62,7 +83,7 @@ fn handle_pod_event(state: State, event: PodEvent) {
 }
 
 /// Handle node event: track node and attempt to schedule all unscheduled pods.
-fn handle_node_event(state: State, event: NodeEvent) {
+fn handle_node_event(state: &State, event: NodeEvent) {
     if event.event_type != EventType::Added {
         tracing::warn!("Scheduler only implements `Add` node events");
         return;
@@ -121,7 +142,7 @@ mod tests {
 
         // Simulate node and pod event
         handle_node_event(
-            state.clone(),
+            &state,
             NodeEvent {
                 node: node.clone(),
                 event_type: EventType::Added,
@@ -129,7 +150,7 @@ mod tests {
         );
 
         handle_pod_event(
-            state.clone(),
+            &state,
             PodEvent {
                 pod: pod.clone(),
                 event_type: EventType::Added,
@@ -158,7 +179,7 @@ mod tests {
         // Simulate pod being added before any nodes exist
         let pod = Pod::default();
         handle_pod_event(
-            state.clone(),
+            &state,
             PodEvent {
                 pod: pod.clone(),
                 event_type: EventType::Added,
@@ -172,7 +193,7 @@ mod tests {
         // Add node and verify scheduling occurs
         let node = Node::default();
         handle_node_event(
-            state.clone(),
+            &state,
             NodeEvent {
                 node: node.clone(),
                 event_type: EventType::Added,
