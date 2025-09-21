@@ -154,7 +154,6 @@ async fn update_status(
         Some(set) if set.contains(&pod_id) => {}
         _ => return HttpResponse::Unauthorized().finish(),
     }
-
     // Update node heartbeat
     if let Err(error) = state.update_node_heartbeat(&status_update.node_name).await {
         tracing::warn!(error=%error, "Failed to update node heartbeat");
@@ -196,7 +195,6 @@ async fn update_status(
 async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
     let spec_obj = body.into_inner();
     let pod_name = spec_obj.metadata.name.clone();
-    tracing::debug!(name=%pod_name, "Received pod manifest");
 
     if state.cache.pod_name_exists(&spec_obj.metadata.name) {
         return HttpResponse::Conflict().body("Duplicate pod name");
@@ -376,7 +374,7 @@ mod tests {
     //!  - test_delete_not_found
 
     use crate::endpoints::helpers::collect_stream_events;
-    use crate::store::{state::new_state_with_store, test_store::TestStore};
+    use crate::store::{new_state_with_store, test_store::TestStore};
 
     use super::*;
     use actix_web::body::BoxBody;

@@ -14,7 +14,6 @@ use uuid::Uuid;
 /// Listens for `WorkRequest`s on the channel and processes them concurrently.
 /// Each event is handled in a detached task to prevent blocking.
 pub async fn run(state: State, mut rx: Receiver<WorkRequest>) -> Result<(), String> {
-    tracing::info!("Starting reconciliation worker");
     tokio::spawn(async move {
         while let Some(req) = rx.recv().await {
             let app_state = state.clone();
@@ -96,6 +95,9 @@ async fn delete(state: State, id: Uuid) {
         Ok(()) => {}
         Err(err) => tracing::error!(error=%err, "Failed to delete pod"),
     };
+
+    state.delete_pod(&id);
+    tracing::info!(pod_name=%pod_runtime.name, "Deleted pod");
 }
 
 #[cfg(test)]

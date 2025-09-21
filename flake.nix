@@ -1,5 +1,5 @@
 {
-  description = "Rust dev shell with OpenSSL";
+  description = "R8S DEV SHELL";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -23,7 +23,6 @@
             pkgs.gum
           ];
 
-          # Set for openssl-sys crate
           PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
         };
       }

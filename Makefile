@@ -1,6 +1,7 @@
 CACHE   ?= 0           # 0/1 -> influences buildx cache
 NODES   ?= 1           # number of r8sagt replicas
 GRAFANA ?= 0           # 0/1 -> toggles grafana profile
+CI ?= 0
 
 FLAGS := $(filter --%,$(MAKECMDGOALS))
 MAKECMDGOALS := $(filter-out $(FLAGS),$(MAKECMDGOALS))
@@ -46,42 +47,72 @@ else
 endif
 
 export DOCKER_BUILDKIT=1
-
 COMPOSE_FILE = docker/docker-compose.yml
+GIT_COMMIT := $(shell git rev-parse --short HEAD)
+DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-GUM_FLAGS = --show-error --spinner=minidot --spinner.foreground=\#ff6000
+GUM_FLAGS = --show-error --spinner=minidot --spinner.foreground 10
 
 .PHONY: all build build-% docker docker-% clean up down
+
+# ------------------ COMPILE LOCALLY
 
 all: build-cli docker
 
 build-%:
-	cargo build -p $(CRATE_$*) --release
+	@if [ "$(CI)" = "1" ]; then \
+		cargo build -p $(CRATE_$*) --release; \
+	else \
+		start=$$(date +%s); \
+		gum spin --title "Building $*" $(GUM_FLAGS) -- \
+		cargo build -p $(CRATE_$*) --release; \
+		end=$$(date +%s); \
+		elapsed=$$((end - start)); \
+		gum style --foreground 10 "> Built $* ($${elapsed}s)"; \
+	fi
 	@if [ "$*" = "cli" ]; then \
 		cp target/release/$(CRATE_$*) . ; \
 	fi
 
 build: build-cli build-server build-node
 
+# ------------------ BUILD IMAGES
+
 docker: docker-server docker-node
 
 docker-server:
-	@gum spin --title "Building server image" $(GUM_FLAGS) -- \
+	@start=$$(date +%s); \
+	gum spin --title "Building server image" $(GUM_FLAGS) -- \
 	docker buildx build \
-		-t $(docker_image_server) \
 		$(CACHE_FROM) $(CACHE_TO) \
+		-t $(docker_image_server):$(GIT_COMMIT) \
+		-t $(docker_image_server):latest \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(DATE) \
 		--load \
-		-f docker/Dockerfile.server .
+		-f docker/Dockerfile.server .; \
+	end=$$(date +%s); \
+	elapsed=$$((end - start)); \
+	gum style --foreground 10 "> Building server image ($${elapsed}s)"
+
 
 docker-node:
-	@gum spin --title "Building node image" $(GUM_FLAGS) -- \
+	@start=$$(date +%s); \
+	gum spin --title "Building node image" $(GUM_FLAGS) -- \
 	docker buildx build \
-		-t $(docker_image_node) \
 		$(CACHE_FROM) $(CACHE_TO) \
+		-t $(docker_image_node):$(GIT_COMMIT) \
+		-t $(docker_image_node):latest \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(DATE) \
 		--load \
-		-f docker/Dockerfile.node .
+		-f docker/Dockerfile.node .; \
+	end=$$(date +%s); \
+	elapsed=$$((end - start)); \
+	gum style --foreground 10 "> Building node image ($${elapsed}s)"
 
-# Toggle grafana
+# ------------------ COMPOSE UP/DOWN
+
 ifeq ($(GRAFANA),1)
   COMPOSE_PROFILES := grafana
 else
@@ -94,9 +125,9 @@ up: down
 	COMPOSE_PROFILES=$(COMPOSE_PROFILES) docker compose -f $(COMPOSE_FILE) up $(SCALE_FLAG)
 
 down:
-	docker compose -f $(COMPOSE_FILE) down -v
+	@docker compose -f $(COMPOSE_FILE) down -v
 
 clean:
-	cargo clean
-	rm -rf $(BUILD_CACHE)
-
+	@cargo clean
+	@rm -rf $(BUILD_CACHE)
+	@docker image prune -f

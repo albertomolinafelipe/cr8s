@@ -94,13 +94,13 @@ impl DockerManager {
 
         let mut stream = docker.create_image(options, None, None);
 
+        tracing::info!(%image, "Pulling");
         while let Some(_status) = stream
             .try_next()
             .await
             .map_err(|e| DockerError::ImagePullError(e.to_string()))?
         {}
 
-        tracing::info!(image=%image, "Pulled container");
         self.mark_image_as_pulled(image.to_string());
 
         Ok(())
@@ -174,12 +174,6 @@ impl DockerClient for DockerManager {
 
             let status = self.get_container_status(&container_id).await?;
 
-            tracing::debug!(
-                id=%short_id(&container_id),
-                status=%status,
-                "Started container"
-            );
-
             container_runtimes.insert(
                 container_spec.name.clone(),
                 ContainerRuntime {
@@ -190,6 +184,11 @@ impl DockerClient for DockerManager {
                 },
             );
         }
+
+        tracing::debug!(
+            pod=%pod.metadata.name,
+            "Pod started"
+        );
 
         // build final podruntime struct
         Ok(PodRuntime {
@@ -209,7 +208,6 @@ impl DockerClient for DockerManager {
                 tracing::warn!(id=%id, error=%e, "Failed to stop container");
                 DockerError::ContainerStopError(e.to_string())
             })?;
-            tracing::debug!(id=%id, "Stopped container");
 
             docker.remove_container(cid, None).await.map_err(|e| {
                 tracing::warn!(id=%id, error=%e, "Failed to remove container");

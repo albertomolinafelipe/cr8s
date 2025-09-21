@@ -4,9 +4,13 @@
 //! as the backend. It serializes and deserializes objects using JSON and
 //! manages key construction using standard prefixes.
 
-use etcd_client::GetOptions;
+use etcd_client::{Client, ConnectOptions, GetOptions};
 use serde::{Serialize, de::DeserializeOwned};
 use shared::models::{node::Node, pod::Pod};
+use tokio::{
+    sync::Mutex,
+    time::{Duration, timeout},
+};
 use uuid::Uuid;
 
 use super::errors::StoreError;
@@ -28,7 +32,8 @@ pub trait Store: Send + Sync {
 
 /// Etcd-backed store for persisting cluster state
 pub struct EtcdStore {
-    etcd: etcd_client::Client,
+    etcd: Mutex<Client>,
+    timeout: u64,
 }
 
 impl EtcdStore {
@@ -37,14 +42,21 @@ impl EtcdStore {
 
     /// Creates a new EtcdStore instance, connecting to the ETCD_ADDR environment variable.
     pub async fn new() -> Self {
-        let etcd_addr =
-            std::env::var("ETCD_ADDR").unwrap_or_else(|_| "http://etcd:2379".to_string());
-        tracing::info!(%etcd_addr, "Connecting to backend ");
+        let etcd_addr = std::env::var("ETCD_ADDR").unwrap_or_else(|_| "etcd:2379".to_string());
 
-        let etcd = etcd_client::Client::connect([&etcd_addr], None)
+        let opts = ConnectOptions::default()
+            .with_timeout(Duration::from_secs(5))
+            .with_keep_alive_while_idle(true);
+
+        let etcd = Client::connect([&etcd_addr], Some(opts))
             .await
             .expect("Failed to connect to etcd");
-        Self { etcd }
+
+        tracing::info!(%etcd_addr, "Connecting to backend");
+        Self {
+            etcd: Mutex::new(etcd),
+            timeout: 300,
+        }
     }
     fn pod_prefix() -> &'static str {
         Self::POD_PREFIX
@@ -59,12 +71,25 @@ impl EtcdStore {
         format!("{}{}", Self::NODE_PREFIX, name)
     }
 
+    async fn with_timeout<T, F>(&self, fut: F) -> Result<T, StoreError>
+    where
+        F: std::future::Future<Output = Result<T, etcd_client::Error>>,
+    {
+        timeout(Duration::from_secs(self.timeout), fut)
+            .await
+            .map_err(|_| StoreError::BackendError("etcd op timed out".into()))?
+            .map_err(|e| StoreError::BackendError(e.to_string()))
+    }
+
     /// Deletes an object from etcd by key.
     async fn delete_object(&self, key: &str) -> Result<(), StoreError> {
-        self.etcd.clone().delete(key, None).await.map_err(|e| {
-            tracing::error!(%key, %e, "Failed to delete key");
-            StoreError::BackendError(e.to_string())
-        })?;
+        let mut client = self.etcd.lock().await;
+        self.with_timeout(client.delete(key, None))
+            .await
+            .map_err(|e| {
+                tracing::error!(%key, %e, "Failed to delete key");
+                StoreError::BackendError(e.to_string())
+            })?;
         Ok(())
     }
 
@@ -74,9 +99,8 @@ impl EtcdStore {
         T: DeserializeOwned,
     {
         // pretty rust
-        self.etcd
-            .clone()
-            .get(key, None)
+        let mut client = self.etcd.lock().await;
+        self.with_timeout(client.get(key, None))
             .await
             .map_err(|error| {
                 tracing::error!(%key, %error, "Could not get at");
@@ -102,9 +126,8 @@ impl EtcdStore {
     {
         let json =
             serde_json::to_string(value).map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
-        self.etcd
-            .clone()
-            .put(key, json, None)
+        let mut client = self.etcd.lock().await;
+        self.with_timeout(client.put(key, json, None))
             .await
             .map_err(|e| StoreError::UnexpectedError(e.to_string()))?;
         Ok(())
@@ -116,10 +139,9 @@ impl EtcdStore {
         T: DeserializeOwned,
     {
         // pretty rust
+        let mut client = self.etcd.lock().await;
         Ok(self
-            .etcd
-            .clone()
-            .get(prefix, Some(GetOptions::new().with_prefix()))
+            .with_timeout(client.get(prefix, Some(GetOptions::new().with_prefix())))
             .await
             .map_err(|error| {
                 tracing::error!(%prefix, %error, "Could not list at");

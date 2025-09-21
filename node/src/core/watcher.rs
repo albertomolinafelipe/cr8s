@@ -14,7 +14,6 @@ use tokio::time::{Duration, sleep};
 
 pub async fn run(state: State, tx: Sender<WorkRequest>) -> Result<(), String> {
     register(state.clone()).await?;
-    tracing::debug!("Starting assignment controller");
     let url = format!(
         "{}/pods?watch=true&nodeName={}",
         state.config.server_url, state.config.name

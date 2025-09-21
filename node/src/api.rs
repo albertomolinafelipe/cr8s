@@ -11,7 +11,6 @@ use uuid::Uuid;
 /// Routes:
 /// - `GET /pods/{pod_id}/logs`: Retrieves logs for a specific pod container.
 pub async fn run(state: State) -> Result<(), String> {
-    tracing::info!("Starting api server");
     let port = state.config.port;
     let node_api_workers = state.config.node_api_workers;
 

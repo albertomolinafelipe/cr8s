@@ -1,11 +1,15 @@
----
-
 kind: Pod
 metadata:
-  name: caddy-pod
+  name: small-pod
 spec:
   containers:
-    - name: caddy
-      image: caddy:alpine
-      ports:
-      - containerPort: 80
+    - name: small
+      image: busybox:latest
+---
+kind: Pod
+metadata:
+  name: cont-pod
+spec:
+  containers:
+    - name: med
+      image: caddy:latest
