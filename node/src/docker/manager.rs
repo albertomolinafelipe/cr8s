@@ -11,12 +11,12 @@ use crate::{
 use async_trait::async_trait;
 use bollard::{
     Docker,
-    container::{
-        Config, CreateContainerOptions, InspectContainerOptions, LogOutput, LogsOptions,
-        StartContainerOptions,
+    container::LogOutput,
+    query_parameters::{
+        CreateContainerOptions, CreateImageOptions, InspectContainerOptions, LogsOptions,
+        RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
     },
-    image::CreateImageOptions,
-    secret::ContainerStateStatusEnum,
+    secret::{ContainerCreateBody, ContainerStateStatusEnum},
 };
 use bytes::Bytes;
 use dashmap::DashSet;
@@ -88,7 +88,7 @@ impl DockerManager {
         }
 
         let options = Some(CreateImageOptions {
-            from_image: image,
+            from_image: Some(image.to_string()),
             ..Default::default()
         });
 
@@ -139,7 +139,7 @@ impl DockerClient for DockerManager {
             let container_name = format!("r8s_{}_{}", container_spec.name, pod.metadata.name);
 
             // build container config from spec
-            let config = Config {
+            let config = ContainerCreateBody {
                 image: Some(container_spec.image.clone()),
                 env: container_spec.env.as_ref().map(|envs| {
                     envs.iter()
@@ -156,8 +156,8 @@ impl DockerClient for DockerManager {
             };
 
             let options = Some(CreateContainerOptions {
-                name: &container_name,
-                platform: None,
+                name: Some(container_name.clone()),
+                platform: "linux/amd64".to_string(),
             });
 
             // create and start container
@@ -168,7 +168,7 @@ impl DockerClient for DockerManager {
                 .id;
 
             docker
-                .start_container(&container_id, None::<StartContainerOptions<String>>)
+                .start_container(&container_id, None::<StartContainerOptions>)
                 .await
                 .map_err(|e| DockerError::ContainerStartError(e.to_string()))?;
 
@@ -204,15 +204,21 @@ impl DockerClient for DockerManager {
         // stop and remove all containers passing along errors
         for cid in container_ids {
             let id = short_id(cid);
-            docker.stop_container(cid, None).await.map_err(|e| {
-                tracing::warn!(id=%id, error=%e, "Failed to stop container");
-                DockerError::ContainerStopError(e.to_string())
-            })?;
+            docker
+                .stop_container(cid, None::<StopContainerOptions>)
+                .await
+                .map_err(|e| {
+                    tracing::warn!(id=%id, error=%e, "Failed to stop container");
+                    DockerError::ContainerStopError(e.to_string())
+                })?;
 
-            docker.remove_container(cid, None).await.map_err(|e| {
-                tracing::warn!(id=%id, error=%e, "Failed to remove container");
-                DockerError::ContainerRemovalError(e.to_string())
-            })?;
+            docker
+                .remove_container(cid, None::<RemoveContainerOptions>)
+                .await
+                .map_err(|e| {
+                    tracing::warn!(id=%id, error=%e, "Failed to remove container");
+                    DockerError::ContainerRemovalError(e.to_string())
+                })?;
             tracing::debug!(id=%id, "Removed container");
         }
 
@@ -227,7 +233,7 @@ impl DockerClient for DockerManager {
                 stdout: true,
                 stderr: true,
                 follow: false,
-                tail: "all",
+                tail: "all".to_string(),
                 ..Default::default()
             }),
         );

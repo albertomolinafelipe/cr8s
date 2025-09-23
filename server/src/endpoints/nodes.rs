@@ -38,6 +38,9 @@ pub struct NodeQuery {
 /// # Returns
 /// - 200 list of nodes or stream of node events
 async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
+    tracing::trace!(
+        watch=%query.watch.unwrap_or(false),
+        "Get node request");
     if query.watch.unwrap_or(false) {
         // Watch mode
         let mut rx = state.node_tx.subscribe();
@@ -63,7 +66,6 @@ async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
     } else {
         // Normal list
         let nodes = state.get_nodes().await;
-        tracing::info!(num_nodes = nodes.len(), "Retrieved cluster nodes");
         HttpResponse::Ok().json(&nodes)
     }
 }

@@ -8,6 +8,7 @@ services:
       - "7620:7620"
     networks:
       - r8s-net
+
   r8sagt:
     image: r8sagt
     privileged: true
@@ -48,13 +49,13 @@ services:
       - "3000:3000"
     volumes:
       - grafana-storage:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ../grafana/provisioning:/etc/grafana/provisioning
     environment:
-      - GF_INSTALL_PLUGINS=marcusolsson-json-datasource
+      - GF_PLUGINS_PREINSTALL=marcusolsson-json-datasource
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_LOG_MODE=console
-      - GF_LOG_LEVEL=off
+      - GF_LOG_LEVEL=error
     depends_on:
       - r8scp
     networks:

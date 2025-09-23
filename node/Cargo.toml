@@ -33,7 +33,7 @@ chrono = "0.4.41"
 bytes = "1.10.1"
 
 # Docker client
-bollard = "0.18"
+bollard = "0.19.2"
 
 [dev-dependencies]
 # mocking control plane api server

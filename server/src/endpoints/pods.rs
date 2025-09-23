@@ -38,7 +38,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 /// # Returns
 /// - 200 list of pods or stream of pod events
 async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder {
-    tracing::debug!(
+    tracing::trace!(
         watch=%query.watch.unwrap_or(false),
         node_name=%query.node_name.clone().unwrap_or("None".to_string()),
         "Get pod request");
