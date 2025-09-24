@@ -191,7 +191,7 @@ async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
 
     let pod_spec = PodSpec {
         node_name: "".to_string(),
-        containers: spec_obj.spec,
+        containers: spec_obj.spec.containers,
     };
 
     match state.add_pod(pod_spec, spec_obj.metadata.into()).await {
@@ -703,7 +703,7 @@ mod tests {
         let state = new_state_with_store(Box::new(TestStore::new())).await;
         let mut payload = PodManifest::default();
         let container = ContainerSpec::default();
-        payload.spec = vec![container.clone(), container];
+        payload.spec.containers = vec![container.clone(), container];
 
         let app = pod_service(&state).await;
         let req = TestRequest::post()

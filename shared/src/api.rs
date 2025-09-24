@@ -43,7 +43,7 @@ pub struct CreateResponse {
     pub status: String,
 }
 
-// --- Pod Definitions ---
+// --- Manifest ---
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct UserMetadata {
@@ -51,10 +51,28 @@ pub struct UserMetadata {
 }
 
 /// Definition of a pod to be created, including metadata and spec.
-#[derive(Deserialize, Serialize, Debug, Default)]
+#[derive(Deserialize, Clone, Serialize, Debug, Default)]
 pub struct PodManifest {
     pub metadata: UserMetadata,
-    pub spec: Vec<ContainerSpec>,
+    pub spec: PodContainers,
+}
+
+// TODO
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReplicaSetManifest {
+    pub metadata: UserMetadata,
+    pub spec: ReplicaSetSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReplicaSetSpec {
+    pub replicas: u16,
+    pub template: PodManifest,
+}
+
+#[derive(Deserialize, Clone, Serialize, Debug, Default)]
+pub struct PodContainers {
+    pub containers: Vec<ContainerSpec>,
 }
 
 // --- Pod and Node Events ---

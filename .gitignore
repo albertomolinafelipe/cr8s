@@ -2,4 +2,3 @@ target/
 r8sctl
 .dockerignore
 .buildx-cache/
-deployments/

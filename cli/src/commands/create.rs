@@ -6,7 +6,7 @@ use erased_serde::serialize_trait_object;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{
-    api::{PodManifest, UserMetadata},
+    api::{PodContainers, PodManifest, ReplicaSetManifest, ReplicaSetSpec, UserMetadata},
     models::pod::ContainerSpec,
 };
 use tokio::fs;
@@ -55,8 +55,6 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
             Ok(_) => {}
             Err(err) => eprintln!("Error: {:?}", err),
         };
-        //use tokio::time::{Duration, sleep};
-        //sleep(Duration::from_millis(50)).await;
     }
 }
 
@@ -83,8 +81,13 @@ pub struct GenericManifest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "spec", rename_all = "PascalCase")]
 pub enum Spec {
-    Pod { containers: Vec<ContainerSpec> },
-    Deployment,
+    Pod {
+        containers: Vec<ContainerSpec>,
+    },
+    ReplicaSet {
+        replicas: u16,
+        template: PodManifest,
+    },
 }
 
 impl Spec {
@@ -93,9 +96,12 @@ impl Spec {
         match self {
             Spec::Pod { containers } => Box::new(PodManifest {
                 metadata,
-                spec: containers,
+                spec: PodContainers { containers },
             }),
-            Spec::Deployment => unimplemented!("Deployment support not implemented yet"),
+            Spec::ReplicaSet { replicas, template } => Box::new(ReplicaSetManifest {
+                metadata,
+                spec: ReplicaSetSpec { replicas, template },
+            }),
         }
     }
 }
@@ -105,7 +111,7 @@ impl std::fmt::Display for Spec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Spec::Pod { .. } => write!(f, "pod"),
-            Spec::Deployment => write!(f, "deployment"),
+            Spec::ReplicaSet { .. } => write!(f, "replicaset"),
         }
     }
 }
