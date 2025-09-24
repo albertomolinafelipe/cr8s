@@ -95,7 +95,7 @@ impl From<UserMetadata> for Metadata {
             name: user.name,
             created_at: now,
             modified_at: now,
-            generation: 1,
+            generation: 0,
         }
     }
 }

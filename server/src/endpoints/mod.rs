@@ -1,3 +1,4 @@
+pub mod log;
 mod nodes;
 mod pods;
 

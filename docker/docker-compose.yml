@@ -3,7 +3,7 @@ services:
     image: r8scp
     container_name: r8scp
     environment:
-      RUST_LOG: r8scp=trace
+      RUST_LOG: r8scp=${LOG_LEVEL}
     ports:
       - "7620:7620"
     networks:

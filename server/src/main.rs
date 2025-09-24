@@ -10,6 +10,7 @@ mod endpoints;
 mod scheduler;
 mod store;
 
+use endpoints::log::Logging;
 use store::{R8s, new_state};
 
 const DEFAULT_PORT: u16 = 7620;
@@ -31,6 +32,7 @@ async fn main() -> std::io::Result<()> {
     // Start apiserver
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(Logging)
             .app_data(state.clone())
             .configure(endpoints::config)
             .route("/", web::get().to(root))

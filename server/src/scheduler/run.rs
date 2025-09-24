@@ -14,7 +14,6 @@ const NODES_URI: &str = "http://localhost:7620/nodes?watch=true";
 /// Starts the scheduler: spawns watchers for pods/nodes and
 /// schedules pods received via the internal channel.
 pub async fn run() {
-    tracing::debug!("Initializing");
     let (tx, mut rx) = mpsc::channel::<Uuid>(100);
     let state = new_state(tx, None);
 

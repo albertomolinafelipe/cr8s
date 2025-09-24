@@ -38,10 +38,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 /// # Returns
 /// - 200 list of pods or stream of pod events
 async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder {
-    tracing::trace!(
-        watch=%query.watch.unwrap_or(false),
-        node_name=%query.node_name.clone().unwrap_or("None".to_string()),
-        "Get pod request");
     if query.watch.unwrap_or(false) {
         // Watch mode
         let node_name = query.node_name.clone();
@@ -116,7 +112,7 @@ async fn update(
     match patch.pod_field {
         PodField::NodeName => match patch.value.as_str() {
             Some(node_name) => match state.assign_pod(&pod_name, node_name.to_string()).await {
-                Ok(_) => HttpResponse::NoContent().finish(),
+                Ok(_) => HttpResponse::Ok().finish(),
                 Err(err) => {
                     tracing::warn!(error = %err, "Could not schedule pod");
                     err.to_http_response()
@@ -165,14 +161,7 @@ async fn update_status(
         .update_pod_status(&pod_id, &mut status_update.status)
         .await
     {
-        Ok(_) => {
-            tracing::trace!(
-                pod=%pod_name,
-                status=%status_update.status.phase,
-                "Pod status successfully updated"
-            );
-            HttpResponse::Ok().finish()
-        }
+        Ok(_) => HttpResponse::Ok().finish(),
         Err(err) => {
             tracing::warn!(
                 error=%err,
@@ -600,7 +589,7 @@ mod tests {
             .set_json(payload)
             .to_request();
         let res = call_service(&app, req).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[actix_web::test]

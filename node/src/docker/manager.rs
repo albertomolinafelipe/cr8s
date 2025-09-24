@@ -187,7 +187,7 @@ impl DockerClient for DockerManager {
 
         tracing::debug!(
             pod=%pod.metadata.name,
-            "Pod started"
+            "Started"
         );
 
         // build final podruntime struct
