@@ -14,7 +14,6 @@ use uuid::Uuid;
 type State = Arc<GCState>;
 
 pub async fn run() {
-    tracing::info!("Initializing");
     watch_pods(Arc::new(GCState::new())).await.expect(".")
 }
 
@@ -51,12 +50,12 @@ async fn handle_pod_event(_state: State, event: PodEvent) {
             PodPhase::Failed | PodPhase::Succeeded => {
                 let pod = event.pod.metadata.name;
                 let url = format!("http://localhost:7620/pods/{}", pod);
+                tracing::info!(%pod, "Deleting");
 
                 if let Err(err) = reqwest::Client::new().delete(&url).send().await {
                     tracing::error!("Failed to delete pod {}: {}", pod, err);
                     return;
                 }
-                tracing::info!(%pod, "Deleted");
             }
             _ => {}
         },

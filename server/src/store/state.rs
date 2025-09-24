@@ -154,6 +154,7 @@ impl R8s {
 
         // assign ad store node
         pod.spec.node_name = node_name.clone();
+        pod.metadata.generation += 1;
         self.store.put_pod(&pod.metadata.id, &pod).await?;
 
         // update cache, move from unassigned to node

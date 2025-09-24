@@ -4,7 +4,7 @@ datasources:
   - name: R8S JSON API
     type: marcusolsson-json-datasource
     access: proxy
-    url: http://r8s-server:7620
+    url: http://r8scp:7620
     jsonData:
       keepCookies: []
     isDefault: false

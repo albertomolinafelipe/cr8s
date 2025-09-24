@@ -1,6 +1,7 @@
 CACHE   ?= 0           # 0/1 -> influences buildx cache
 NODES   ?= 1           # number of r8sagt replicas
 GRAFANA ?= 0           # 0/1 -> toggles grafana profile
+LOG_LEVEL ?= debug
 CI ?= 0
 
 FLAGS := $(filter --%,$(MAKECMDGOALS))
@@ -122,7 +123,9 @@ endif
 SCALE_FLAG := $(if $(NODES),--scale r8sagt=$(NODES),)
 
 up: down
-	COMPOSE_PROFILES=$(COMPOSE_PROFILES) docker compose -f $(COMPOSE_FILE) up $(SCALE_FLAG)
+	COMPOSE_PROFILES=$(COMPOSE_PROFILES) \
+	LOG_LEVEL=$(LOG_LEVEL) \
+	docker compose -f $(COMPOSE_FILE) up $(SCALE_FLAG)
 
 down:
 	@docker compose -f $(COMPOSE_FILE) down -v

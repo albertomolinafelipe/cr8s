@@ -63,7 +63,6 @@ async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
     } else {
         // Normal list
         let nodes = state.get_nodes().await;
-        tracing::info!(num_nodes = nodes.len(), "Retrieved cluster nodes");
         HttpResponse::Ok().json(&nodes)
     }
 }

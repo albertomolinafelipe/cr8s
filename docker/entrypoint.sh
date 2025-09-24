@@ -13,4 +13,6 @@ if [ ! -S /var/run/docker.sock ]; then
   exit 1
 fi
 
+export NODE_NAME="$HOSTNAME"
+
 exec /usr/local/bin/r8sagt
