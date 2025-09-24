@@ -1,4 +1,4 @@
-# r8s
+# cr8s
 
 Lightweight Kubernetes-Inspired Orchestrator in Rust
 
