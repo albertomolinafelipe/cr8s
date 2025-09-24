@@ -29,17 +29,17 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/app/target \
     bash -eux -c '\
-      cargo build -p r8scp --release --target x86_64-unknown-linux-musl && \
-      install -Dm755 target/x86_64-unknown-linux-musl/release/r8scp /out/r8scp \
+      cargo build -p cr8scp --release --target x86_64-unknown-linux-musl && \
+      install -Dm755 target/x86_64-unknown-linux-musl/release/cr8scp /out/cr8scp \
     '
 
 # Runtime
 FROM scratch
-COPY --from=builder /out/r8scp /usr/local/bin/r8scp
+COPY --from=builder /out/cr8scp /usr/local/bin/cr8scp
 
 ARG GIT_COMMIT
 ARG BUILD_DATE
 LABEL org.opencontainers.image.revision=$GIT_COMMIT
 LABEL org.opencontainers.image.created=$BUILD_DATE
 
-ENTRYPOINT ["/usr/local/bin/r8scp"]
+ENTRYPOINT ["/usr/local/bin/cr8scp"]

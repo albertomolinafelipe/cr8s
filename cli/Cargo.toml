@@ -1,5 +1,5 @@
 [package]
-name = "r8sctl"
+name = "cr8sctl"
 version = "0.1.0"
 edition = "2024"
 description = "Command line tool to interact with the apiserver"

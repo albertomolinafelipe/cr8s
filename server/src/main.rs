@@ -1,4 +1,4 @@
-//! r8s-server entrypoint.
+//! cr8s-server entrypoint.
 //! Starts the Actix-web server and launches the scheduler and drift controller
 
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
@@ -11,10 +11,10 @@ mod scheduler;
 mod store;
 
 use endpoints::log::Logging;
-use store::{R8s, new_state};
+use store::{Cr8s, new_state};
 
 const DEFAULT_PORT: u16 = 7620;
-type State = web::Data<R8s>;
+type State = web::Data<Cr8s>;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -43,7 +43,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 async fn root() -> impl Responder {
-    HttpResponse::Ok().body("Hello from r8s-server")
+    HttpResponse::Ok().body("Hello from cr8s-server")
 }
 
 // ------------
@@ -55,7 +55,7 @@ struct Config {
 impl Config {
     fn from_env() -> Self {
         Self {
-            port: env::var("R8S_SERVER_PORT")
+            port: env::var("CR8S_SERVER_PORT")
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_PORT),

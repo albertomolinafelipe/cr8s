@@ -6,7 +6,7 @@
 //!
 //! Each subsystem communicates via a shared application state and message channels.
 
-use r8sagt::{
+use cr8sagt::{
     api,
     core::{sync, watcher, worker},
     models::WorkRequest,
@@ -20,7 +20,7 @@ async fn main() -> Result<(), String> {
     let state = new_state();
 
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,node=trace"));
+        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn"));
 
     let node_name = state.config.name.clone();
     tracing_subscriber::fmt().with_env_filter(env_filter).init();

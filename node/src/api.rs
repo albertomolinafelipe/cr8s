@@ -30,7 +30,7 @@ pub async fn run(state: State) -> Result<(), String> {
 
 /// Root endpoint handler.
 async fn root() -> impl Responder {
-    HttpResponse::Ok().body("Hello from r8s-node")
+    HttpResponse::Ok().body("Hello from cr8s-node")
 }
 
 /// Retrieves logs for a specific pod container.

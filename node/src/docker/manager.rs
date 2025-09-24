@@ -136,7 +136,7 @@ impl DockerClient for DockerManager {
 
             // build unique name
             // NOTE: without namespaces or restarts
-            let container_name = format!("r8s_{}_{}", container_spec.name, pod.metadata.name);
+            let container_name = format!("cr8s_{}_{}", container_spec.name, pod.metadata.name);
 
             // build container config from spec
             let config = ContainerCreateBody {

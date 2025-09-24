@@ -635,6 +635,73 @@ dependencies = [
 ]
 
 [[package]]
+name = "cr8sagt"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-web",
+ "async-stream",
+ "async-trait",
+ "bollard",
+ "bytes",
+ "chrono",
+ "dashmap",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
+name = "cr8scp"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-web",
+ "async-stream",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "dashmap",
+ "etcd-client",
+ "futures",
+ "futures-util",
+ "rand",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
+name = "cr8sctl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "erased-serde",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_yaml",
+ "shared",
+ "tabled",
+ "tokio",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1902,73 +1969,6 @@ name = "r-efi"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
-
-[[package]]
-name = "r8sagt"
-version = "0.1.0"
-dependencies = [
- "actix-http",
- "actix-web",
- "async-stream",
- "async-trait",
- "bollard",
- "bytes",
- "chrono",
- "dashmap",
- "futures-util",
- "reqwest",
- "serde",
- "serde_json",
- "shared",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wiremock",
-]
-
-[[package]]
-name = "r8scp"
-version = "0.1.0"
-dependencies = [
- "actix-http",
- "actix-web",
- "async-stream",
- "async-trait",
- "bytes",
- "chrono",
- "dashmap",
- "etcd-client",
- "futures",
- "futures-util",
- "rand",
- "reqwest",
- "serde",
- "serde_json",
- "shared",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wiremock",
-]
-
-[[package]]
-name = "r8sctl"
-version = "0.1.0"
-dependencies = [
- "clap",
- "erased-serde",
- "futures-util",
- "reqwest",
- "serde",
- "serde_yaml",
- "shared",
- "tabled",
- "tokio",
-]
 
 [[package]]
 name = "rand"

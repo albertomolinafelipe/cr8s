@@ -7,4 +7,4 @@ pub mod test_store;
 
 #[cfg(test)]
 pub use state::new_state_with_store;
-pub use state::{R8s, new_state};
+pub use state::{Cr8s, new_state};

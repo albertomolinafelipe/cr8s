@@ -26,16 +26,16 @@ use super::{
 
 /// Initializes a new application state using the default Etcd-backed store.
 pub async fn new_state() -> State {
-    Data::new(R8s::default_with_store(Box::new(EtcdStore::new().await)).await)
+    Data::new(Cr8s::default_with_store(Box::new(EtcdStore::new().await)).await)
 }
 
 #[cfg(test)]
 pub async fn new_state_with_store(store: Box<dyn Store + Send + Sync>) -> State {
-    Data::new(R8s::default_with_store(store).await)
+    Data::new(Cr8s::default_with_store(store).await)
 }
 
 /// Core with storage, caches, and event channels.
-pub struct R8s {
+pub struct Cr8s {
     store: Box<dyn Store + Send + Sync>,
     /// Broadcast channel for pod-related events.
     pub pod_tx: broadcast::Sender<PodEvent>,
@@ -45,7 +45,7 @@ pub struct R8s {
     pub cache: CacheManager,
 }
 
-impl R8s {
+impl Cr8s {
     //! - add_pod(spec, metadata): Validate and add a new pod to the store and cache, then broadcast an event
     //! - delete_pod(name): Remove a pod the store and cache, then broadcast an event
     //! - assign_pod(name, node_name): Assign an unassigned pod to a  ode, update store and cache, broadcast event

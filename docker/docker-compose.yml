@@ -1,28 +1,28 @@
 services:
-  r8scp:
-    image: r8scp
-    container_name: r8scp
+  cr8scp:
+    image: cr8scp
+    container_name: cr8scp
     environment:
-      RUST_LOG: r8scp=${LOG_LEVEL}
+      RUST_LOG: cr8scp=${LOG_LEVEL}
     ports:
       - "7620:7620"
     networks:
-      - r8s-net
+      - cr8s-net
 
-  r8sagt:
-    image: r8sagt
+  cr8sagt:
+    image: cr8sagt
     privileged: true
     ports:
       - "7621"
     environment:
       NODE_PORT: 7621
-      R8S_SERVER_PORT: 7620
-      R8S_SERVER_HOST: "r8scp"
-      RUST_LOG: r8sagt=trace
+      CR8S_SERVER_PORT: 7620
+      CR8S_SERVER_HOST: "cr8scp"
+      RUST_LOG: cr8sagt=trace
     depends_on:
-      - r8scp
+      - cr8scp
     networks:
-      - r8s-net
+      - cr8s-net
 
   etcd:
     image: quay.io/coreos/etcd:v3.6.1
@@ -39,7 +39,7 @@ services:
     volumes:
       - etcd-data:/etcd-data
     networks:
-      - r8s-net
+      - cr8s-net
 
   grafana:
     image: grafana/grafana
@@ -57,14 +57,14 @@ services:
       - GF_LOG_MODE=console
       - GF_LOG_LEVEL=error
     depends_on:
-      - r8scp
+      - cr8scp
     networks:
-      - r8s-net
+      - cr8s-net
 
 volumes:
   grafana-storage:
   etcd-data:
 
 networks:
-  r8s-net:
+  cr8s-net:
     driver: bridge

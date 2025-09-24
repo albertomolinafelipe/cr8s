@@ -37,8 +37,8 @@ pub struct EtcdStore {
 }
 
 impl EtcdStore {
-    const POD_PREFIX: &'static str = "/r8s/pods/";
-    const NODE_PREFIX: &'static str = "/r8s/nodes/";
+    const POD_PREFIX: &'static str = "/cr8s/pods/";
+    const NODE_PREFIX: &'static str = "/cr8s/nodes/";
 
     /// Creates a new EtcdStore instance, connecting to the ETCD_ADDR environment variable.
     pub async fn new() -> Self {

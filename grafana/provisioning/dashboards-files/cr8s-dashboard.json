@@ -277,8 +277,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "R8S Nodes",
-  "uid": "r8s-nodes-dashboard",
+  "title": "CR8S Nodes",
+  "uid": "cr8s-nodes-dashboard",
   "version": 4
 }
 
