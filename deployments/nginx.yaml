@@ -1,11 +1,6 @@
 kind: Pod
 metadata:
   name: small-pod
-  ownerReference:
-    kind: ReplicaSet
-    name: test
-    id: 9e8cabc4-ecf9-4013-b718-bd463432ec72
-    controller: true
 spec:
   containers:
     - name: small

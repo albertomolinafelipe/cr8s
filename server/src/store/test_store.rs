@@ -6,13 +6,14 @@ use super::errors::StoreError;
 use super::store::Store;
 use async_trait::async_trait;
 use dashmap::DashMap;
-use shared::models::{node::Node, pod::Pod};
+use shared::models::{node::Node, pod::Pod, replicaset::ReplicaSet};
 use uuid::Uuid;
 
 /// An in-memory implementation of `Store`, used for testing purposes.
 pub struct TestStore {
     pub pods: DashMap<Uuid, Pod>,
     pub nodes: DashMap<String, Node>,
+    pub replicasets: DashMap<Uuid, ReplicaSet>,
 }
 
 impl TestStore {
@@ -20,6 +21,7 @@ impl TestStore {
         Self {
             pods: DashMap::new(),
             nodes: DashMap::new(),
+            replicasets: DashMap::new(),
         }
     }
 }
@@ -63,5 +65,27 @@ impl Store for TestStore {
             .iter()
             .map(|entry| entry.value().clone())
             .collect())
+    }
+
+    async fn get_replicaset(&self, id: Uuid) -> Result<Option<ReplicaSet>, StoreError> {
+        Ok(self.replicasets.get(&id).map(|ref_entry| ref_entry.clone()))
+    }
+
+    async fn put_replicaset(&self, id: &Uuid, replicaset: &ReplicaSet) -> Result<(), StoreError> {
+        self.replicasets.insert(*id, replicaset.clone());
+        Ok(())
+    }
+
+    async fn list_replicasets(&self) -> Result<Vec<ReplicaSet>, StoreError> {
+        Ok(self
+            .replicasets
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect())
+    }
+
+    async fn delete_replicaset(&self, id: &Uuid) -> Result<(), StoreError> {
+        self.replicasets.remove(id);
+        Ok(())
     }
 }

@@ -6,8 +6,8 @@ use erased_serde::serialize_trait_object;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{
-    api::{PodContainers, PodManifest, ReplicaSetManifest, ReplicaSetSpec},
-    models::{metadata::ObjectMetadata, pod::ContainerSpec},
+    api::{PodContainers, PodManifest, ReplicaSetManifest},
+    models::{metadata::ObjectMetadata, pod::ContainerSpec, replicaset::ReplicaSetSpec},
 };
 use tokio::fs;
 

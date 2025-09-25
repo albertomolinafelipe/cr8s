@@ -184,16 +184,20 @@ async fn update_status(
 async fn create(
     state: State,
     query: web::Query<CreatePodParams>,
-    body: web::Json<PodManifest>,
+    payload: web::Json<PodManifest>,
 ) -> impl Responder {
-    let manifest = body.into_inner();
-    let pod_name = manifest.metadata.name.clone();
+    let manifest = payload.into_inner();
+    let controller_call = query.controller.unwrap_or(true);
 
-    if !query.controller.unwrap_or(true) && manifest.metadata.owner_reference.is_some() {
+    if (!controller_call && manifest.metadata.owner_reference.is_some())
+        || manifest.metadata.name.is_none()
+    {
         return HttpResponse::BadRequest().finish();
     }
 
-    if state.cache.pod_name_exists(&manifest.metadata.name) {
+    let pod_name = manifest.metadata.name.clone().unwrap();
+
+    if state.cache.pod_name_exists(&pod_name) {
         return HttpResponse::Conflict().body("Duplicate pod name");
     };
 
@@ -382,7 +386,7 @@ mod tests {
         test::{self, TestRequest, call_service, init_service, read_body_json},
     };
     use serde_json::Value;
-    use shared::api::UserMetadata;
+    use shared::models::metadata::ObjectMetadata;
     use shared::models::pod::PodStatus;
     use shared::models::{
         node::Node,
@@ -419,9 +423,9 @@ mod tests {
 
     async fn add_pod(state: &State) -> String {
         let spec = PodSpec::default();
-        let metadata = UserMetadata::default();
+        let metadata = ObjectMetadata::default();
         assert!(state.add_pod(spec, metadata.clone().into()).await.is_ok());
-        return metadata.name;
+        return metadata.name.expect("");
     }
 
     // --- Get tests ---
@@ -695,7 +699,7 @@ mod tests {
         let state = new_state_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
         let mut payload = PodManifest::default();
-        payload.metadata.name = pod_name;
+        payload.metadata.name = Some(pod_name);
 
         let app = pod_service(&state).await;
         let req = TestRequest::post()

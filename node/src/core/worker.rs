@@ -151,7 +151,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_reconciliate_new_runtime() {
-        let pod = Pod::default();
+        let mut pod = Pod::default();
+        pod.metadata.generation += 1;
+        pod.spec.node_name = "some node".into();
         let docker = Box::new(TestDocker::new());
         let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
         state.put_pod(&pod);

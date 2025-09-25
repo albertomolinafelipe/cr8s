@@ -19,6 +19,9 @@ pub struct CacheManager {
     pod_map: DashMap<String, DashSet<Uuid>>,
     /// Maps pod name to its associated info (node assignment and UUID).
     pod_name_idx: DashMap<String, PodInfo>,
+
+    /// Set of know rs names
+    replicaset_names: DashSet<String>,
 }
 
 impl CacheManager {
@@ -28,6 +31,7 @@ impl CacheManager {
             node_addrs: DashSet::new(),
             pod_map: DashMap::new(),
             pod_name_idx: DashMap::new(),
+            replicaset_names: DashSet::new(),
         }
     }
 
@@ -48,6 +52,19 @@ impl CacheManager {
     pub fn add_node(&self, name: &str, addr: &str) {
         self.node_addrs.insert(addr.to_string());
         self.node_names.insert(name.to_string());
+    }
+
+    // --- RS ops ---
+    //
+    // - Check name duplicates
+    // - Add to cache
+
+    pub fn replicaset_name_exists(&self, name: &str) -> bool {
+        self.replicaset_names.contains(name)
+    }
+
+    pub fn add_replicaset(&self, name: &str) {
+        self.replicaset_names.insert(name.to_string());
     }
 
     // --- Pod ops ---

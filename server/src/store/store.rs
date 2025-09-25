@@ -6,7 +6,7 @@
 
 use etcd_client::{Client, ConnectOptions, GetOptions};
 use serde::{Serialize, de::DeserializeOwned};
-use shared::models::{node::Node, pod::Pod};
+use shared::models::{node::Node, pod::Pod, replicaset::ReplicaSet};
 use tokio::{
     sync::Mutex,
     time::{Duration, timeout},
@@ -25,6 +25,11 @@ pub trait Store: Send + Sync {
     async fn list_pods(&self) -> Result<Vec<Pod>, StoreError>;
     async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError>;
 
+    async fn get_replicaset(&self, id: Uuid) -> Result<Option<ReplicaSet>, StoreError>;
+    async fn put_replicaset(&self, id: &Uuid, pod: &ReplicaSet) -> Result<(), StoreError>;
+    async fn list_replicasets(&self) -> Result<Vec<ReplicaSet>, StoreError>;
+    async fn delete_replicaset(&self, id: &Uuid) -> Result<(), StoreError>;
+
     async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError>;
     async fn put_node(&self, name: &str, node: &Node) -> Result<(), StoreError>;
     async fn list_nodes(&self) -> Result<Vec<Node>, StoreError>;
@@ -39,6 +44,7 @@ pub struct EtcdStore {
 impl EtcdStore {
     const POD_PREFIX: &'static str = "/cr8s/pods/";
     const NODE_PREFIX: &'static str = "/cr8s/nodes/";
+    const REPLICASET_PREFIX: &'static str = "/cr8s/replicasets/";
 
     /// Creates a new EtcdStore instance, connecting to the ETCD_ADDR environment variable.
     pub async fn new() -> Self {
@@ -64,11 +70,17 @@ impl EtcdStore {
     fn node_prefix() -> &'static str {
         Self::NODE_PREFIX
     }
+    fn replicaset_prefix() -> &'static str {
+        Self::REPLICASET_PREFIX
+    }
     fn pod_key(id: &Uuid) -> String {
         format!("{}{}", Self::POD_PREFIX, id)
     }
     fn node_key(name: &str) -> String {
         format!("{}{}", Self::NODE_PREFIX, name)
+    }
+    fn replicaset_key(id: &Uuid) -> String {
+        format!("{}{}", Self::REPLICASET_PREFIX, id)
     }
 
     async fn with_timeout<T, F>(&self, fut: F) -> Result<T, StoreError>
@@ -165,6 +177,25 @@ impl Store for EtcdStore {
     async fn list_pods(&self) -> Result<Vec<Pod>, StoreError> {
         self.list_objects::<Pod>(Self::pod_prefix()).await
     }
+    async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError> {
+        self.delete_object(&Self::pod_key(id)).await
+    }
+
+    async fn get_replicaset(&self, id: Uuid) -> Result<Option<ReplicaSet>, StoreError> {
+        self.get_object::<ReplicaSet>(&Self::replicaset_key(&id))
+            .await
+    }
+    async fn put_replicaset(&self, id: &Uuid, pod: &ReplicaSet) -> Result<(), StoreError> {
+        self.put_object::<ReplicaSet>(&Self::replicaset_key(id), pod)
+            .await
+    }
+    async fn list_replicasets(&self) -> Result<Vec<ReplicaSet>, StoreError> {
+        self.list_objects::<ReplicaSet>(Self::replicaset_prefix())
+            .await
+    }
+    async fn delete_replicaset(&self, id: &Uuid) -> Result<(), StoreError> {
+        self.delete_object(&Self::replicaset_key(id)).await
+    }
 
     async fn get_node(&self, name: &str) -> Result<Option<Node>, StoreError> {
         self.get_object::<Node>(&Self::node_key(name)).await
@@ -174,8 +205,5 @@ impl Store for EtcdStore {
     }
     async fn list_nodes(&self) -> Result<Vec<Node>, StoreError> {
         self.list_objects::<Node>(Self::node_prefix()).await
-    }
-    async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError> {
-        self.delete_object(&Self::pod_key(id)).await
     }
 }

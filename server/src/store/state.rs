@@ -12,11 +12,12 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use shared::{
-    api::{EventType, NodeEvent, PodEvent},
+    api::{EventType, NodeEvent, PodEvent, ReplicaSetEvent},
     models::{
         metadata::Metadata,
         node::Node,
-        pod::{Pod, PodSpec, PodStatus},
+        pod::{ContainerSpec, Pod, PodSpec, PodStatus},
+        replicaset::{ReplicaSet, ReplicaSetSpec, ReplicaSetStatus},
     },
 };
 
@@ -40,10 +41,10 @@ pub async fn new_state_with_store(store: Box<dyn Store + Send + Sync>) -> State 
 /// Core with storage, caches, and event channels.
 pub struct Cr8s {
     store: Box<dyn Store + Send + Sync>,
-    /// Broadcast channel for pod-related events.
+    /// Broadcast channels
     pub pod_tx: broadcast::Sender<PodEvent>,
-    /// Broadcast channel for node-related events.
     pub node_tx: broadcast::Sender<NodeEvent>,
+    pub replicaset_tx: broadcast::Sender<ReplicaSetEvent>,
     /// In-memory fast-access cache for node/pod metadata.
     pub cache: CacheManager,
 }
@@ -55,6 +56,8 @@ impl Cr8s {
     //! - update_pod_status(id, status, cont_status): Update the status and container statuses of a pod
     //! - get_pods(query): List pods optionally filtered by node name
     //!
+    //! - add_replicaset(sepc, metadata)
+    //!
     //! - add_node(node): Add a new node to the store and cache, then broadcast an event
     //! - get_nodes(): Retrieve all Nodes from the store
     //! - get_node(name): Get a specific Node by name from the store
@@ -64,20 +67,48 @@ impl Cr8s {
     async fn default_with_store(store: Box<dyn Store + Send + Sync>) -> Self {
         let (pod_tx, _) = broadcast::channel(10);
         let (node_tx, _) = broadcast::channel(10);
+        let (replicaset_tx, _) = broadcast::channel(10);
+        let cache = CacheManager::new();
         Self {
             store,
             pod_tx,
             node_tx,
-            cache: CacheManager::new(),
+            replicaset_tx,
+            cache,
         }
+    }
+
+    pub async fn add_replicaset(
+        &self,
+        spec: ReplicaSetSpec,
+        metadata: Metadata,
+    ) -> Result<Uuid, StoreError> {
+        validate_container_list(&spec.template.spec.containers)?;
+
+        // save object and metadata in store and cache
+        let rs = ReplicaSet {
+            spec,
+            metadata,
+            status: ReplicaSetStatus::default(),
+        };
+
+        self.store.put_replicaset(&rs.metadata.id, &rs).await?;
+        self.cache.add_replicaset(&rs.metadata.name);
+
+        // send event
+        let event = ReplicaSetEvent {
+            event_type: EventType::Added,
+            replicaset: rs.clone(),
+        };
+        let _ = self.replicaset_tx.send(event);
+        Ok(rs.metadata.id)
     }
 
     /// Adds a new pod, assigns it a UUID, and emits a PodEvent.
     pub async fn add_pod(&self, spec: PodSpec, metadata: Metadata) -> Result<Uuid, StoreError> {
         // validate spec and name
-        validate_pod(&spec)?;
+        validate_container_list(&spec.containers)?;
 
-        // since its low level manifest is not stored
         let pod = Pod {
             spec,
             metadata,
@@ -261,10 +292,10 @@ impl Cr8s {
 }
 
 /// Validates pod spec for duplicate container names.
-fn validate_pod(spec: &PodSpec) -> Result<(), StoreError> {
+fn validate_container_list(list: &Vec<ContainerSpec>) -> Result<(), StoreError> {
     let mut seen_names = HashSet::new();
 
-    for container in &spec.containers {
+    for container in list {
         if !seen_names.insert(&container.name) {
             return Err(StoreError::WrongFormat(format!(
                 "Duplicate container name found: '{}'",

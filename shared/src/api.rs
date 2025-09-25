@@ -9,6 +9,7 @@ use crate::models::{
     metadata::ObjectMetadata,
     node::Node,
     pod::{ContainerSpec, Pod, PodStatus},
+    replicaset::{ReplicaSet, ReplicaSetSpec},
 };
 
 // --- Query Params ---
@@ -59,17 +60,10 @@ pub struct PodManifest {
     pub spec: PodContainers,
 }
 
-// TODO
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ReplicaSetManifest {
     pub metadata: ObjectMetadata,
     pub spec: ReplicaSetSpec,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ReplicaSetSpec {
-    pub replicas: u16,
-    pub template: PodManifest,
 }
 
 #[derive(Deserialize, Clone, Serialize, Debug, Default)]
@@ -91,6 +85,13 @@ pub struct PodEvent {
 pub struct NodeEvent {
     pub event_type: EventType,
     pub node: Node,
+}
+
+/// Event structure representing changes to a node.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReplicaSetEvent {
+    pub event_type: EventType,
+    pub replicaset: ReplicaSet,
 }
 
 /// Enum representing the type of event that occurred.

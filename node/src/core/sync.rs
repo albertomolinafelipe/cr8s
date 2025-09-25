@@ -168,7 +168,9 @@ mod tests {
             ..Default::default()
         };
         let state = new_state_with(Some(config), Some(docker.clone()));
-        let pod = Pod::default();
+        let mut pod = Pod::default();
+        pod.metadata.generation += 1;
+        pod.spec.node_name = "some node".into();
 
         // create and add pod to state
         state.put_pod(&pod);

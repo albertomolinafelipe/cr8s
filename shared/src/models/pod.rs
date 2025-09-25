@@ -64,6 +64,16 @@ pub struct Port {
 
 // --- Impl ---
 
+impl Default for Pod {
+    fn default() -> Self {
+        Pod {
+            metadata: Metadata::default(),
+            spec: PodSpec::default(),
+            status: PodStatus::default(),
+        }
+    }
+}
+
 impl Default for PodStatus {
     fn default() -> Self {
         PodStatus {
