@@ -7,7 +7,7 @@
 //! - `GET  /nodes`  — List or watch all registered nodes
 //! - `POST /nodes`  — Register a new node with the control plane
 
-use crate::State;
+use crate::state::State;
 use actix_web::{
     HttpRequest, HttpResponse, Responder,
     web::{self, Bytes},
@@ -138,7 +138,7 @@ mod tests {
     //!  - test_register_node_repeat_addr
 
     use crate::endpoints::helpers::collect_stream_events;
-    use crate::store::{new_state_with_store, test_store::TestStore};
+    use crate::state::{ApiServerState, test_store::TestStore};
 
     use super::*;
     use actix_web::body::BoxBody;
@@ -167,7 +167,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_get_nodes_empty() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let app = node_service(&state).await;
 
         let req = TestRequest::get().uri("/nodes").to_request();
@@ -183,7 +183,7 @@ mod tests {
         let test_store = TestStore::new();
         let node = Node::default();
         test_store.nodes.insert(node.name.clone(), node);
-        let state = new_state_with_store(Box::new(test_store)).await;
+        let state = ApiServerState::new_with_store(Box::new(test_store)).await;
 
         let app = node_service(&state).await;
         let req = TestRequest::get().uri("/nodes").to_request();
@@ -201,7 +201,7 @@ mod tests {
             ..Default::default()
         };
         test_store.nodes.insert(n1.name.clone(), n1.clone());
-        let state = new_state_with_store(Box::new(test_store)).await;
+        let state = ApiServerState::new_with_store(Box::new(test_store)).await;
 
         let app = node_service(&state).await;
 
@@ -227,7 +227,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_register_node() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
 
         let app = node_service(&state).await;
         let payload = NodeRegisterReq {
@@ -244,7 +244,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_register_node_empty_name() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let app = node_service(&state).await;
 
         let payload = NodeRegisterReq {
@@ -265,7 +265,7 @@ mod tests {
             name: "n1".to_string(),
             ..Default::default()
         };
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         assert!(state.add_node(&n1).await.is_ok());
 
         let app = node_service(&state).await;
@@ -288,7 +288,7 @@ mod tests {
             addr: "unknown:1000".to_string(),
             ..Default::default()
         };
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         assert!(state.add_node(&n1).await.is_ok());
 
         let app = node_service(&state).await;

@@ -1,4 +1,10 @@
-use crate::State;
+//! ReplicaSet
+//!
+//! ## Routes
+//! - `GET    /replicasets`                    — List or watch replicasets
+//! - `POST   /replicasets`                    — Create a new replicaset
+
+use crate::state::State;
 use actix_web::{
     HttpResponse, Responder,
     web::{self, Bytes},

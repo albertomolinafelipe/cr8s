@@ -8,10 +8,6 @@ use uuid::Uuid;
 
 pub type State = Arc<SchedulerState>;
 
-pub fn new_state(pod_tx: Sender<Uuid>, api_server: Option<String>) -> State {
-    Arc::new(SchedulerState::new(pod_tx, api_server))
-}
-
 /// In-memory scheduler state shared across tasks.
 #[derive(Debug)]
 pub struct SchedulerState {
@@ -30,8 +26,8 @@ pub struct SchedulerState {
 }
 
 impl SchedulerState {
-    fn new(pod_tx: Sender<Uuid>, api_server: Option<String>) -> Self {
-        Self {
+    pub fn new(pod_tx: Sender<Uuid>, api_server: Option<String>) -> State {
+        Arc::new(Self {
             nodes: DashMap::new(),
             pods: DashMap::new(),
             pod_map: DashMap::new(),
@@ -39,7 +35,7 @@ impl SchedulerState {
             node_resources: DashMap::new(),
             pod_resources: DashMap::new(),
             api_server,
-        }
+        })
     }
 
     pub fn add_pod(&self, pod: &Pod) {

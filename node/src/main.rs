@@ -10,30 +10,27 @@ use cr8sagt::{
     api,
     core::{sync, watcher, worker},
     models::WorkRequest,
-    state::new_state,
+    state::NodeState,
 };
 use tokio::sync::mpsc;
 use tracing_subscriber::{self, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let state = new_state();
-
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn"));
 
-    let node_name = state.config.name.clone();
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
-    let _ = tracing::info_span!("", node = %node_name).enter();
 
     let (tx, rx) = mpsc::channel::<WorkRequest>(100);
+    let state = NodeState::new();
 
-    let watcher_fut = watcher::run(state.clone(), tx);
-    let worker_fut = worker::run(state.clone(), rx);
-    let sync_fut = sync::run(state.clone());
-    let api_fut = api::run(state.clone());
-
-    tokio::try_join!(api_fut, worker_fut, sync_fut, watcher_fut)?;
+    tokio::try_join!(
+        api::run(state.clone()),
+        sync::run(state.clone()),
+        worker::run(state.clone(), rx),
+        watcher::run(state.clone(), tx),
+    )?;
 
     Ok(())
 }

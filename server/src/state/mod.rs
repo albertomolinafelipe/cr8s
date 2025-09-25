@@ -4,7 +4,13 @@
 //! Provides abstraction for persistent storage and caching layer
 //! Event broadcasting mechanism for notifications on watches
 
-use actix_web::web::Data;
+mod cache;
+mod errors;
+mod store;
+#[cfg(test)]
+pub mod test_store;
+
+use actix_web::web;
 use chrono::Utc;
 use futures::future::join_all;
 use std::collections::HashSet;
@@ -21,25 +27,14 @@ use shared::{
     },
 };
 
-use crate::{State, store::cache::CacheManager};
+use cache::CacheManager;
+use errors::StoreError;
+use store::{EtcdStore, Store};
 
-use super::{
-    errors::StoreError,
-    store::{EtcdStore, Store},
-};
-
-/// Initializes a new application state using the default Etcd-backed store.
-pub async fn new_state() -> State {
-    Data::new(Cr8s::default_with_store(Box::new(EtcdStore::new().await)).await)
-}
-
-#[cfg(test)]
-pub async fn new_state_with_store(store: Box<dyn Store + Send + Sync>) -> State {
-    Data::new(Cr8s::default_with_store(store).await)
-}
+pub type State = web::Data<ApiServerState>;
 
 /// Core with storage, caches, and event channels.
-pub struct Cr8s {
+pub struct ApiServerState {
     store: Box<dyn Store + Send + Sync>,
     /// Broadcast channels
     pub pod_tx: broadcast::Sender<PodEvent>,
@@ -49,7 +44,7 @@ pub struct Cr8s {
     pub cache: CacheManager,
 }
 
-impl Cr8s {
+impl ApiServerState {
     //! - add_pod(spec, metadata): Validate and add a new pod to the store and cache, then broadcast an event
     //! - delete_pod(name): Remove a pod the store and cache, then broadcast an event
     //! - assign_pod(name, node_name): Assign an unassigned pod to a  ode, update store and cache, broadcast event
@@ -64,19 +59,24 @@ impl Cr8s {
     //! - get_node(name): Get a specific Node by name from the store
     //! - update_node_heartbeat(node_name): Update the heartbeat timestamp of a node in the store
 
-    /// Constructs a new instance with a custom store implementation.
-    async fn default_with_store(store: Box<dyn Store + Send + Sync>) -> Self {
+    /// Construc ts a new instance with a custom store implementation.
+
+    pub async fn new() -> State {
+        Self::new_with_store(Box::new(EtcdStore::new().await)).await
+    }
+
+    pub async fn new_with_store(store: Box<dyn Store + Send + Sync>) -> State {
         let (pod_tx, _) = broadcast::channel(10);
         let (node_tx, _) = broadcast::channel(10);
         let (replicaset_tx, _) = broadcast::channel(10);
         let cache = CacheManager::new();
-        Self {
+        web::Data::new(Self {
             store,
             pod_tx,
             node_tx,
             replicaset_tx,
             cache,
-        }
+        })
     }
 
     pub async fn add_replicaset(

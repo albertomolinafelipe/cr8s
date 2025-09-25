@@ -7,8 +7,12 @@ use shared::{
     utils::watch_stream,
 };
 
-pub async fn run() {
-    watch_pods().await.expect(".")
+pub struct GCController {}
+
+impl GCController {
+    pub async fn run() {
+        watch_pods().await.expect("")
+    }
 }
 
 async fn watch_pods() -> Result<(), ()> {

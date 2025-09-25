@@ -4,7 +4,6 @@
 
 use shared::{
     api::{EventType, PodEvent, ReplicaSetEvent},
-    models::pod::PodPhase,
     utils::watch_stream,
 };
 use tokio::sync::mpsc;
@@ -13,10 +12,16 @@ use uuid::Uuid;
 const PODS_URI: &str = "http://localhost:7620/pods?watch=true";
 const REPLICASET_URI: &str = "http://localhost:7620/replicasets?watch=true";
 
-pub async fn run() {
-    let (tx, mut rx) = mpsc::channel::<Uuid>(100);
-    let _ = tokio::spawn(watch_replicasets());
-    let _ = tokio::spawn(watch_pods());
+pub struct RSController {}
+
+impl RSController {
+    pub async fn run() {
+        let (_tx, mut _rx) = mpsc::channel::<Uuid>(100);
+        let _ = tokio::try_join!(
+            tokio::spawn(watch_replicasets()),
+            tokio::spawn(watch_pods()),
+        );
+    }
 }
 
 /// Watch for new nodes in apiserver

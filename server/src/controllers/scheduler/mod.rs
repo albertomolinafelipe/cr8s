@@ -1,33 +1,39 @@
+mod filter;
+mod flow;
+mod scorer;
+mod state;
+
 use shared::api::{EventType, NodeEvent, PodEvent};
 use shared::utils::watch_stream;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use super::{
-    flow::SchedulerFlow,
-    state::{State, new_state},
-};
+use flow::SchedulerFlow;
+use state::{SchedulerState, State};
 
 const PODS_URI: &str = "http://localhost:7620/pods?watch=true";
 const NODES_URI: &str = "http://localhost:7620/nodes?watch=true";
 
-/// Starts the scheduler: spawns watchers for pods/nodes and
-/// schedules pods received via the internal channel.
-pub async fn run() {
-    let (tx, mut rx) = mpsc::channel::<Uuid>(100);
-    let state = new_state(tx, None);
+pub struct Scheduler {}
 
-    // Watch nodes and pods in the background
-    let _ = tokio::spawn(watch_nodes(state.clone()));
-    let _ = tokio::spawn(watch_pods(state.clone()));
+impl Scheduler {
+    /// Starts the scheduler: spawns watchers for pods/nodes and
+    /// schedules pods received via the internal channel.
+    pub async fn run() {
+        let (tx, mut rx) = mpsc::channel::<Uuid>(100);
+        let state = SchedulerState::new(tx, None);
 
-    // Handle scheduling of pods via channel
-    tokio::spawn(async move {
-        while let Some(pod_id) = rx.recv().await {
-            let sched_state = state.clone();
-            schedule(sched_state, pod_id).await;
-        }
-    });
+        let _ = tokio::try_join!(
+            tokio::spawn(watch_nodes(state.clone())),
+            tokio::spawn(watch_pods(state.clone())),
+            tokio::spawn(async move {
+                while let Some(pod_id) = rx.recv().await {
+                    let sched_state = state.clone();
+                    schedule(sched_state, pod_id).await;
+                }
+            }),
+        );
+    }
 }
 
 /// Assigns a pod to the best available node by patching the API server.
@@ -134,7 +140,7 @@ mod tests {
         // Setup state and mocked patch endpoint
         let (tx, mut rx) = mpsc::channel(10);
         let mock_server = start_mock_server().await;
-        let state = new_state(tx, Some(mock_server.uri()));
+        let state = SchedulerState::new(tx, Some(mock_server.uri()));
 
         let pod = Pod::default();
         let node = Node::default();
@@ -173,7 +179,7 @@ mod tests {
     async fn test_handle_node_event_schedule_unscheduled_pods() {
         let (tx, _rx) = mpsc::channel(10);
         let mock_server = start_mock_server().await;
-        let state = new_state(tx, Some(mock_server.uri()));
+        let state = SchedulerState::new(tx, Some(mock_server.uri()));
 
         // Simulate pod being added before any nodes exist
         let pod = Pod::default();

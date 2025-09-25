@@ -14,18 +14,16 @@ use uuid::Uuid;
 /// Listens for `WorkRequest`s on the channel and processes them concurrently.
 /// Each event is handled in a detached task to prevent blocking.
 pub async fn run(state: State, mut rx: Receiver<WorkRequest>) -> Result<(), String> {
-    tokio::spawn(async move {
-        while let Some(req) = rx.recv().await {
-            let app_state = state.clone();
-            tokio::spawn(async move {
-                match req.event {
-                    EventType::Modified => reconciliate(app_state, req.id).await,
-                    EventType::Deleted => delete(app_state, req.id).await,
-                    _ => tracing::warn!("Event type {:?} not handled", req.event),
-                }
-            });
-        }
-    });
+    while let Some(req) = rx.recv().await {
+        let app_state = state.clone();
+        tokio::spawn(async move {
+            match req.event {
+                EventType::Modified => reconciliate(app_state, req.id).await,
+                EventType::Deleted => delete(app_state, req.id).await,
+                _ => tracing::warn!("Event type {:?} not handled", req.event),
+            }
+        });
+    }
     Ok(())
 }
 
@@ -116,7 +114,7 @@ mod tests {
     //!     stop pod and delete runtime
 
     use super::*;
-    use crate::{docker::test::TestDocker, models::PodRuntime, state::new_state_with};
+    use crate::{docker::test::TestDocker, models::PodRuntime, state::NodeState};
     use shared::models::pod::Pod;
     use std::collections::HashMap;
 
@@ -124,7 +122,8 @@ mod tests {
     async fn test_reconciliate_non_existent_pod() {
         let id = Uuid::new_v4();
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        let state =
+            NodeState::new_with(Some(crate::models::Config::default()), Some(docker.clone()));
         reconciliate(state.clone(), id).await;
 
         // should not insert runtime or call docker api
@@ -136,7 +135,8 @@ mod tests {
     async fn test_reconciliate_existing_runtime() {
         let pod = Pod::default();
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        let state =
+            NodeState::new_with(Some(crate::models::Config::default()), Some(docker.clone()));
         state.put_pod(&pod);
         let runtime = PodRuntime {
             id: pod.metadata.id,
@@ -155,7 +155,8 @@ mod tests {
         pod.metadata.generation += 1;
         pod.spec.node_name = "some node".into();
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        let state =
+            NodeState::new_with(Some(crate::models::Config::default()), Some(docker.clone()));
         state.put_pod(&pod);
 
         reconciliate(state.clone(), pod.metadata.id).await;
@@ -165,7 +166,8 @@ mod tests {
     #[tokio::test]
     async fn test_delete_runtime_not_found() {
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        let state =
+            NodeState::new_with(Some(crate::models::Config::default()), Some(docker.clone()));
 
         delete(state.clone(), Uuid::new_v4()).await;
         // should not call docker api
@@ -174,7 +176,8 @@ mod tests {
     #[tokio::test]
     async fn test_delete() {
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(crate::models::Config::default()), Some(docker.clone()));
+        let state =
+            NodeState::new_with(Some(crate::models::Config::default()), Some(docker.clone()));
         let runtime = PodRuntime {
             id: Uuid::new_v4(),
             name: "".to_string(),

@@ -8,7 +8,7 @@
 //! - `PATCH  /pods/{pod_name}/status`  — Update the pod's status
 //! - `GET    /pods/{pod_name}/logs`    — Get or stream pods logs
 
-use crate::State;
+use crate::state::State;
 use actix_web::{HttpResponse, Responder, web};
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -375,7 +375,7 @@ mod tests {
     //!  - test_delete_not_found
 
     use crate::endpoints::helpers::collect_stream_events;
-    use crate::store::{new_state_with_store, test_store::TestStore};
+    use crate::state::{ApiServerState, test_store::TestStore};
 
     use super::*;
     use actix_web::body::BoxBody;
@@ -432,7 +432,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_get_pods_query() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let _ = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -448,7 +448,7 @@ mod tests {
     #[actix_web::test]
     async fn test_get_pods_watch() {
         // Add initial assigned pod
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let (node_name, pod_name_1) = add_assigned_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -489,7 +489,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let (node_name, pod_name) = add_assigned_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -512,7 +512,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status_pod_name_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -536,7 +536,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status_node_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
         let app = pod_service(&state).await;
 
@@ -558,7 +558,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status_not_assigned_to_caller() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -585,7 +585,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -606,7 +606,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod_invalid_node_name() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -624,7 +624,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -643,7 +643,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod_already_assigned() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let (node_name, pod_name) = add_assigned_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -663,7 +663,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_spec() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -683,7 +683,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_pod() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
 
         let app = pod_service(&state).await;
         let req = TestRequest::post()
@@ -696,7 +696,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_pod_repeat_name() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
         let mut payload = PodManifest::default();
         payload.metadata.name = Some(pod_name);
@@ -712,7 +712,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_pod_repeat_container_name() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let mut payload = PodManifest::default();
         let container = ContainerSpec::default();
         payload.spec.containers = vec![container.clone(), container];
@@ -728,7 +728,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_delete_pod() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -749,7 +749,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_delete_pod_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let app = pod_service(&state).await;
 
         let req = TestRequest::delete().uri("/pods/made-up").to_request();
