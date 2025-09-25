@@ -45,6 +45,10 @@ async fn watch_pods(state: State) -> Result<(), ()> {
 
 /// Track pod and trigger scheduling.
 async fn handle_pod_event(_state: State, event: PodEvent) {
+    if event.pod.metadata.owner_reference.is_some() {
+        tracing::trace!(pod=%event.pod.metadata.name, "Pod with owner, skipping");
+        return;
+    }
     match event.event_type {
         EventType::Modified => match event.pod.status.phase {
             PodPhase::Failed | PodPhase::Succeeded => {

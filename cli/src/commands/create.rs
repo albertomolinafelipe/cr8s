@@ -6,8 +6,8 @@ use erased_serde::serialize_trait_object;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{
-    api::{PodContainers, PodManifest, ReplicaSetManifest, ReplicaSetSpec, UserMetadata},
-    models::pod::ContainerSpec,
+    api::{PodContainers, PodManifest, ReplicaSetManifest, ReplicaSetSpec},
+    models::{metadata::ObjectMetadata, pod::ContainerSpec},
 };
 use tokio::fs;
 
@@ -48,7 +48,7 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
     // send each manifest to the specified resource endpoint
     let client = Client::new();
     for object in docs {
-        let url = format!("{}/{}s", config.url, object.spec);
+        let url = format!("{}/{}s?controller=false", config.url, object.spec);
         let manifest = object.spec.into_manifest(object.metadata);
 
         match client.post(&url).json(&manifest).send().await {
@@ -70,7 +70,7 @@ serialize_trait_object!(Manifest);
 /// Represents a top-level Kubernetes-like object with metadata and a kind-specific spec.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenericManifest {
-    pub metadata: UserMetadata,
+    pub metadata: ObjectMetadata,
     #[serde(flatten)]
     pub spec: Spec,
 }
@@ -92,7 +92,7 @@ pub enum Spec {
 
 impl Spec {
     /// Converts the enum variant into a boxed `Manifest` implementation.
-    pub fn into_manifest(self, metadata: UserMetadata) -> Box<dyn Manifest> {
+    pub fn into_manifest(self, metadata: ObjectMetadata) -> Box<dyn Manifest> {
         match self {
             Spec::Pod { containers } => Box::new(PodManifest {
                 metadata,

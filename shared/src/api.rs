@@ -6,13 +6,14 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::models::{
+    metadata::ObjectMetadata,
     node::Node,
     pod::{ContainerSpec, Pod, PodStatus},
 };
 
 // --- Query Params ---
 
-/// Query parameters for listing or watching pods.
+/// Listing or watching pods.
 #[derive(Deserialize, Debug)]
 pub struct PodQueryParams {
     #[serde(rename = "nodeName")]
@@ -20,11 +21,17 @@ pub struct PodQueryParams {
     pub watch: Option<bool>,
 }
 
-/// Query parameters for fetching logs from a container.
+/// Fetching logs from a container.
 #[derive(Deserialize, Debug)]
 pub struct LogsQueryParams {
     pub container: Option<String>,
     pub follow: Option<bool>,
+}
+
+/// Signal if create comes from controller or cli/user
+#[derive(Deserialize, Debug)]
+pub struct CreatePodParams {
+    pub controller: Option<bool>,
 }
 
 // --- Requests and Responses ---
@@ -45,22 +52,17 @@ pub struct CreateResponse {
 
 // --- Manifest ---
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct UserMetadata {
-    pub name: String,
-}
-
 /// Definition of a pod to be created, including metadata and spec.
 #[derive(Deserialize, Clone, Serialize, Debug, Default)]
 pub struct PodManifest {
-    pub metadata: UserMetadata,
+    pub metadata: ObjectMetadata,
     pub spec: PodContainers,
 }
 
 // TODO
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ReplicaSetManifest {
-    pub metadata: UserMetadata,
+    pub metadata: ObjectMetadata,
     pub spec: ReplicaSetSpec,
 }
 
@@ -124,12 +126,4 @@ pub enum PodField {
 pub struct PodStatusUpdate {
     pub node_name: String,
     pub status: PodStatus,
-}
-
-impl Default for UserMetadata {
-    fn default() -> Self {
-        UserMetadata {
-            name: Uuid::new_v4().to_string(),
-        }
-    }
 }

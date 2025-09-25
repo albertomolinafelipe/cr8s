@@ -13,8 +13,11 @@ use uuid::Uuid;
 
 use shared::{
     api::{EventType, NodeEvent, PodEvent},
-    models::node::Node,
-    models::pod::{Metadata, Pod, PodSpec, PodStatus},
+    models::{
+        metadata::Metadata,
+        node::Node,
+        pod::{Pod, PodSpec, PodStatus},
+    },
 };
 
 use crate::{State, store::cache::CacheManager};

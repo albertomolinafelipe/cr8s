@@ -7,11 +7,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .route("", web::post().to(create));
 }
 
-async fn get(state: State) -> impl Responder {
+async fn get(_state: State) -> impl Responder {
     HttpResponse::NotImplemented().finish()
 }
 
-async fn create(state: State, payload: web::Json<ReplicaSetManifest>) -> impl Responder {
+async fn create(_state: State, _payload: web::Json<ReplicaSetManifest>) -> impl Responder {
     // tracing::debug!("{0:?}", payload.spec);
     HttpResponse::NotImplemented().finish()
 }

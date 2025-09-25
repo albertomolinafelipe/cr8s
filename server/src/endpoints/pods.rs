@@ -14,8 +14,8 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use shared::{
     api::{
-        CreateResponse, EventType, LogsQueryParams, PodEvent, PodField, PodManifest, PodPatch,
-        PodQueryParams, PodStatusUpdate,
+        CreatePodParams, CreateResponse, EventType, LogsQueryParams, PodEvent, PodField,
+        PodManifest, PodPatch, PodQueryParams, PodStatusUpdate,
     },
     models::pod::PodSpec,
 };
@@ -181,20 +181,28 @@ async fn update_status(
 /// - 201: Pod created.
 /// - 400: Invalid manifest format
 /// - 409: Repeat pod
-async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
-    let spec_obj = body.into_inner();
-    let pod_name = spec_obj.metadata.name.clone();
+async fn create(
+    state: State,
+    query: web::Query<CreatePodParams>,
+    body: web::Json<PodManifest>,
+) -> impl Responder {
+    let manifest = body.into_inner();
+    let pod_name = manifest.metadata.name.clone();
 
-    if state.cache.pod_name_exists(&spec_obj.metadata.name) {
+    if !query.controller.unwrap_or(true) && manifest.metadata.owner_reference.is_some() {
+        return HttpResponse::BadRequest().finish();
+    }
+
+    if state.cache.pod_name_exists(&manifest.metadata.name) {
         return HttpResponse::Conflict().body("Duplicate pod name");
     };
 
     let pod_spec = PodSpec {
         node_name: "".to_string(),
-        containers: spec_obj.spec.containers,
+        containers: manifest.spec.containers,
     };
 
-    match state.add_pod(pod_spec, spec_obj.metadata.into()).await {
+    match state.add_pod(pod_spec, manifest.metadata.into()).await {
         Ok(id) => {
             tracing::info!(
                 name=%pod_name,

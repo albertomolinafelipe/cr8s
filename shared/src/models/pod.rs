@@ -1,8 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::api::UserMetadata;
+use crate::models::metadata::Metadata;
 
 // --- Core ---
 
@@ -27,17 +26,6 @@ pub struct PodStatus {
     pub container_status: Vec<(String, String)>,
     pub last_update: Option<DateTime<Utc>>,
     pub observed_generation: u16,
-}
-
-// --- Metadata ---
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Metadata {
-    pub id: Uuid,
-    pub name: String,
-    pub created_at: DateTime<Utc>,
-    pub modified_at: DateTime<Utc>,
-    pub generation: u16,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -87,19 +75,6 @@ impl Default for PodStatus {
     }
 }
 
-impl From<UserMetadata> for Metadata {
-    fn from(user: UserMetadata) -> Self {
-        let now = Utc::now();
-        Metadata {
-            id: Uuid::new_v4(),
-            name: user.name,
-            created_at: now,
-            modified_at: now,
-            generation: 0,
-        }
-    }
-}
-
 impl Default for ContainerSpec {
     fn default() -> Self {
         ContainerSpec {
@@ -116,23 +91,6 @@ impl Default for PodSpec {
         PodSpec {
             node_name: "".to_string(),
             containers: vec![ContainerSpec::default()],
-        }
-    }
-}
-
-impl Default for Pod {
-    fn default() -> Self {
-        let now = Utc::now();
-        Pod {
-            metadata: Metadata {
-                id: Uuid::new_v4(),
-                name: "test-pod".to_string(),
-                created_at: now,
-                modified_at: now,
-                generation: 1,
-            },
-            spec: PodSpec::default(),
-            status: PodStatus::default(),
         }
     }
 }
