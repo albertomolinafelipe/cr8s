@@ -22,7 +22,7 @@ async fn watch_pods() -> Result<(), ()> {
     Ok(())
 }
 
-/// Track pod and trigger scheduling.
+/// Filter for finished orphan pods
 async fn handle_pod_event(event: PodEvent) {
     if event.pod.metadata.owner_reference.is_some() {
         tracing::trace!(pod=%event.pod.metadata.name, "Pod with owner, skipping");
