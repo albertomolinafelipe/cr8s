@@ -1,42 +1,21 @@
 //! Drift-controller
-//! Watch and delete broken pods
+//! Watch and delete orphan pods
 
-use std::sync::Arc;
-
-use dashmap::DashMap;
 use shared::{
     api::{EventType, PodEvent},
-    models::pod::{Pod, PodPhase},
+    models::pod::PodPhase,
     utils::watch_stream,
 };
-use uuid::Uuid;
-
-type State = Arc<GCState>;
 
 pub async fn run() {
-    watch_pods(Arc::new(GCState::new())).await.expect(".")
+    watch_pods().await.expect(".")
 }
 
-/// In-memory scheduler state shared across tasks.
-#[derive(Debug)]
-struct GCState {
-    _pods: DashMap<Uuid, Pod>,
-}
-
-impl GCState {
-    fn new() -> Self {
-        Self {
-            _pods: DashMap::new(),
-        }
-    }
-}
-
-async fn watch_pods(state: State) -> Result<(), ()> {
+async fn watch_pods() -> Result<(), ()> {
     let url = "http://localhost:7620/pods?watch=true".to_string();
     watch_stream::<PodEvent, _>(&url, move |event| {
-        let gc_state = state.clone();
         tokio::spawn(async move {
-            handle_pod_event(gc_state.clone(), event).await;
+            handle_pod_event(event).await;
         });
     })
     .await;
@@ -44,7 +23,7 @@ async fn watch_pods(state: State) -> Result<(), ()> {
 }
 
 /// Track pod and trigger scheduling.
-async fn handle_pod_event(_state: State, event: PodEvent) {
+async fn handle_pod_event(event: PodEvent) {
     if event.pod.metadata.owner_reference.is_some() {
         tracing::trace!(pod=%event.pod.metadata.name, "Pod with owner, skipping");
         return;

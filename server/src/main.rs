@@ -25,9 +25,10 @@ async fn main() -> std::io::Result<()> {
     let config = Config::from_env();
     let state: State = new_state().await;
 
-    // Start background scheduler and garbage collector
+    // Start background scheduler and controllers
     tokio::spawn(scheduler::run());
     tokio::spawn(controllers::garbage_collector::run());
+    tokio::spawn(controllers::replicaset::run());
 
     // Start apiserver
     let server = HttpServer::new(move || {

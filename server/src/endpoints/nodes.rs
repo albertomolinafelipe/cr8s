@@ -34,14 +34,15 @@ pub struct NodeQuery {
 /// # Arguments
 /// - `query`: Query parameters:
 ///    - `watch` (bool, optional): If true, opens a watch stream of node events.
+///    - TODO filter or get by name
 ///
 /// # Returns
 /// - 200 list of nodes or stream of node events
 async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
+    let nodes = state.get_nodes().await;
     if query.watch.unwrap_or(false) {
         // Watch mode
         let mut rx = state.node_tx.subscribe();
-        let nodes = state.get_nodes().await;
         let stream = async_stream::stream! {
             for n in nodes {
                 let event = NodeEvent {
@@ -62,7 +63,6 @@ async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
             .streaming(stream)
     } else {
         // Normal list
-        let nodes = state.get_nodes().await;
         HttpResponse::Ok().json(&nodes)
     }
 }

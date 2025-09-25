@@ -1,14 +1,57 @@
 use crate::State;
-use actix_web::{HttpResponse, Responder, web};
-use shared::api::{CreateResponse, ReplicaSetManifest};
+use actix_web::{
+    HttpResponse, Responder,
+    web::{self, Bytes},
+};
+use serde::Deserialize;
+use shared::api::{CreateResponse, EventType, ReplicaSetEvent, ReplicaSetManifest};
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(get))
         .route("", web::post().to(create));
 }
 
-async fn get(_state: State) -> impl Responder {
-    HttpResponse::NotImplemented().finish()
+#[derive(Deserialize)]
+pub struct ReplicaSetQuery {
+    watch: Option<bool>,
+}
+
+/// List or watch replicasets
+///
+/// # Arguments
+/// - `query`: Query parameters:
+///    - `watch` (bool, optional): If true, opens a watch stream of node events.
+///    - TODO filter or get by name
+///
+/// # Returns
+/// - 200 list of nodes or stream of node events
+async fn get(state: State, query: web::Query<ReplicaSetQuery>) -> impl Responder {
+    let replicasets = state.get_replicasets().await;
+    if query.watch.unwrap_or(false) {
+        // Watch mode
+        let mut rx = state.replicaset_tx.subscribe();
+        let stream = async_stream::stream! {
+            for rs in replicasets {
+                let event = ReplicaSetEvent {
+                    replicaset: rs,
+                    event_type: EventType::Added
+                };
+                let json = serde_json::to_string(&event).unwrap();
+                yield Ok::<_, actix_web::Error>(Bytes::from(json + "\n"));
+            }
+            while let Ok(event) = rx.recv().await {
+                let json = serde_json::to_string(&event).unwrap();
+                yield Ok::<_, actix_web::Error>(Bytes::from(json + "\n"));
+            }
+        };
+
+        HttpResponse::Ok()
+            .content_type("application/json")
+            .streaming(stream)
+    } else {
+        // Normal list
+        HttpResponse::Ok().json(&replicasets)
+    }
 }
 
 async fn create(state: State, payload: web::Json<ReplicaSetManifest>) -> impl Responder {

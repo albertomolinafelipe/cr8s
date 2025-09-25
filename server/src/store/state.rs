@@ -57,6 +57,7 @@ impl Cr8s {
     //! - get_pods(query): List pods optionally filtered by node name
     //!
     //! - add_replicaset(sepc, metadata)
+    //! - get_replicasets()
     //!
     //! - add_node(node): Add a new node to the store and cache, then broadcast an event
     //! - get_nodes(): Retrieve all Nodes from the store
@@ -102,6 +103,11 @@ impl Cr8s {
         };
         let _ = self.replicaset_tx.send(event);
         Ok(rs.metadata.id)
+    }
+
+    /// Retrieves all replicasets.
+    pub async fn get_replicasets(&self) -> Vec<ReplicaSet> {
+        self.store.list_replicasets().await.unwrap_or_default()
     }
 
     /// Adds a new pod, assigns it a UUID, and emits a PodEvent.

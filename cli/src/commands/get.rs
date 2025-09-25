@@ -2,7 +2,7 @@
 //! Fetches a list and displays it as a formatted table.
 
 use clap::Parser;
-use shared::models::{node::Node, pod::Pod};
+use shared::models::{node::Node, pod::Pod, replicaset::ReplicaSet};
 use tabled::{Table, settings::Style};
 
 use super::ResourceType;
@@ -39,6 +39,14 @@ pub async fn handle_get(config: &Config, args: &GetArgs) {
                     println!("{}", table);
                 }
                 Err(e) => eprintln!("Failed to parse pods: {}", e),
+            },
+            ResourceType::Replicasets => match resp.json::<Vec<ReplicaSet>>().await {
+                Ok(data) => {
+                    let mut table = Table::new(data);
+                    table.with(Style::blank());
+                    println!("{}", table);
+                }
+                Err(e) => eprintln!("Failed to parse replicasets: {}", e),
             },
         },
         Ok(_) => {}
