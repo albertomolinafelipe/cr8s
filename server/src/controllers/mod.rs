@@ -6,10 +6,8 @@ mod garbage_collector;
 mod replicaset;
 mod scheduler;
 
-pub async fn run() {
-    let _ = tokio::try_join!(
-        tokio::spawn(Scheduler::run()),
-        tokio::spawn(GCController::run()),
-        tokio::spawn(RSController::run()),
-    );
+pub fn run(apiserver: String) {
+    tokio::spawn(Scheduler::run(apiserver.clone()));
+    tokio::spawn(GCController::run(apiserver.clone()));
+    tokio::spawn(RSController::run(apiserver.clone()));
 }

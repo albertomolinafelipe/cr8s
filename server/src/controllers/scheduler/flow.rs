@@ -113,12 +113,7 @@ impl SchedulerFlow {
         };
 
         let client = Client::new();
-        let base_url = self
-            .state
-            .api_server
-            .as_deref()
-            .unwrap_or("http://localhost:7620");
-        let url = format!("{}/pods/{}", base_url, self.pod.metadata.name);
+        let url = format!("{}/{}", self.state.pods_uri, self.pod.metadata.name);
 
         match client.patch(&url).json(&patch).send().await {
             Ok(resp) if resp.status().is_success() => {

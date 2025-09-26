@@ -6,14 +6,16 @@
 //!
 //! Each subsystem communicates via a shared application state and message channels.
 
-use cr8sagt::{
-    api,
-    core::{sync, watcher, worker},
-    models::WorkRequest,
-    state::NodeState,
-};
 use tokio::sync::mpsc;
 use tracing_subscriber::{self, EnvFilter};
+
+use crate::{models::WorkRequest, state::NodeState};
+
+mod api;
+mod core;
+mod docker;
+pub mod models;
+mod state;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
@@ -27,10 +29,26 @@ async fn main() -> Result<(), String> {
 
     tokio::try_join!(
         api::run(state.clone()),
-        sync::run(state.clone()),
-        worker::run(state.clone(), rx),
-        watcher::run(state.clone(), tx),
+        core::sync::run(state.clone()),
+        core::worker::run(state.clone(), rx),
+        core::watcher::run(state.clone(), tx),
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test_setup {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    #[ctor::ctor]
+    fn init_tracing() {
+        INIT.call_once(|| {
+            tracing_subscriber::fmt()
+                .with_env_filter(format!("{}=trace", env!("CARGO_PKG_NAME")))
+                .with_test_writer()
+                .init();
+        });
+    }
 }
