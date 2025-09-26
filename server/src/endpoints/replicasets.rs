@@ -63,14 +63,11 @@ async fn get(state: State, query: web::Query<ReplicaSetQuery>) -> impl Responder
 async fn create(state: State, payload: web::Json<ReplicaSetManifest>) -> impl Responder {
     let manifest = payload.into_inner();
 
-    if manifest.metadata.name.is_none()
-        || manifest.metadata.owner_reference.is_some()
-        || manifest.spec.replicas < 1
-    {
+    if manifest.metadata.owner_reference.is_some() || manifest.spec.replicas < 1 {
         return HttpResponse::BadRequest().finish();
     }
 
-    let rs_name = manifest.metadata.name.clone().unwrap();
+    let rs_name = manifest.metadata.name.clone();
 
     if state.cache.replicaset_name_exists(&rs_name) {
         return HttpResponse::Conflict().body("Duplicate replicaset name");

@@ -1,6 +1,6 @@
 kind: ReplicaSet
 metadata:
-  name: my-replicaset
+  name: cont-repset
 spec:
   replicas: 2
   template:
@@ -10,3 +10,11 @@ spec:
       containers:
         - name: caddy
           image: caddy:latest
+---
+kind: Pod
+metadata:
+  name: small-pod
+spec:
+  containers:
+    - name: small
+      image: busybox:latest

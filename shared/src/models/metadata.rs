@@ -17,7 +17,7 @@ pub struct Metadata {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ObjectMetadata {
-    pub name: Option<String>,
+    pub name: String,
     #[serde(rename = "ownerReference")]
     pub owner_reference: Option<OwnerReference>,
 }
@@ -38,7 +38,7 @@ pub enum OwnerKind {
 impl Default for ObjectMetadata {
     fn default() -> Self {
         ObjectMetadata {
-            name: Some(Uuid::new_v4().to_string()),
+            name: Uuid::new_v4().to_string(),
             owner_reference: None,
         }
     }
@@ -62,7 +62,7 @@ impl Default for Metadata {
 impl From<ObjectMetadata> for Metadata {
     fn from(user: ObjectMetadata) -> Self {
         Metadata {
-            name: user.name.unwrap_or_default(),
+            name: user.name,
             owner_reference: user.owner_reference,
             ..Default::default()
         }

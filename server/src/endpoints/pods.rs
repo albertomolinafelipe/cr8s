@@ -187,15 +187,17 @@ async fn create(
     payload: web::Json<PodManifest>,
 ) -> impl Responder {
     let manifest = payload.into_inner();
-    let controller_call = query.controller.unwrap_or(true);
+    let controller_call = query.controller.unwrap_or(false);
 
-    if (!controller_call && manifest.metadata.owner_reference.is_some())
-        || manifest.metadata.name.is_none()
+    // if controller true must have owner reference
+    // if no controller it cant have owner reference
+    if (controller_call && manifest.metadata.owner_reference.is_none())
+        || (!controller_call && manifest.metadata.owner_reference.is_some())
     {
         return HttpResponse::BadRequest().finish();
     }
 
-    let pod_name = manifest.metadata.name.clone().unwrap();
+    let pod_name = manifest.metadata.name.clone();
 
     if state.cache.pod_name_exists(&pod_name) {
         return HttpResponse::Conflict().body("Duplicate pod name");
@@ -425,7 +427,7 @@ mod tests {
         let spec = PodSpec::default();
         let metadata = ObjectMetadata::default();
         assert!(state.add_pod(spec, metadata.clone().into()).await.is_ok());
-        return metadata.name.expect("");
+        return metadata.name;
     }
 
     // --- Get tests ---
@@ -699,7 +701,7 @@ mod tests {
         let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
         let mut payload = PodManifest::default();
-        payload.metadata.name = Some(pod_name);
+        payload.metadata.name = pod_name;
 
         let app = pod_service(&state).await;
         let req = TestRequest::post()

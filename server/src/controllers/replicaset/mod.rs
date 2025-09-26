@@ -4,8 +4,9 @@
 
 use std::sync::Arc;
 
+use reqwest::Client;
 use shared::{
-    api::{EventType, PodEvent, ReplicaSetEvent},
+    api::{EventType, PodEvent, PodManifest, ReplicaSetEvent},
     models::metadata::OwnerKind,
     utils::watch_stream,
 };
@@ -67,14 +68,14 @@ impl RSController {
                 let rsc = rsc.clone();
                 tokio::spawn(async move {
                     while let Some(rs_id) = rx.recv().await {
-                        rsc.reconciliate_task(rs_id);
+                        rsc.reconciliate_task(rs_id).await;
                     }
                 })
             }
         );
     }
 
-    fn reconciliate_task(&self, rs_id: Uuid) {
+    async fn reconciliate_task(&self, rs_id: Uuid) {
         let Some(rs) = self.state.get_replicaset(&rs_id) else {
             tracing::error!(id=%rs_id, "Replicaset not state");
             return;
@@ -84,7 +85,19 @@ impl RSController {
             tracing::warn!("RS controller is not done yet");
             return;
         }
-        tracing::debug!(%rs_id, "Reconcialiating");
+
+        // Create pods
+        let client = Client::new();
+        let url = format!("{}?controller=true", self.pods_uri);
+        for _ in 0..(rs.spec.replicas - rs.status.ready_replicas) {
+            // regenerate manifest if 409?
+            let manifest: PodManifest = rs.clone().into();
+            match client.post(&url).json(&manifest).send().await {
+                Ok(resp) if resp.status().is_success() => tracing::debug!("Created RS pod"),
+                Ok(resp) => tracing::error!("Failed to create pod: {}", resp.status()),
+                Err(err) => tracing::error!("Failed to create pod: {}", err),
+            }
+        }
     }
 
     fn handle_replicaset_event(&self, event: ReplicaSetEvent) {

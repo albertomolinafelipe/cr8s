@@ -124,15 +124,11 @@ impl SchedulerFlow {
                 );
                 self.accepted = true;
             }
-            Ok(resp) => {
-                tracing::error!(
-                    status = %resp.status(),
-                    "Failed to patch pod: non-success response"
-                );
-            }
-            Err(err) => {
-                tracing::error!("Failed to patch pod: {}", err);
-            }
+            Ok(resp) => tracing::error!(
+                status = %resp.status(),
+                "Failed to patch pod: non-success response"
+            ),
+            Err(err) => tracing::error!("Failed to patch pod: {}", err),
         }
         self
     }
