@@ -54,7 +54,7 @@ impl Default for Metadata {
             owner_reference: None,
             created_at: now,
             modified_at: now,
-            generation: 0,
+            generation: 1,
         }
     }
 }
