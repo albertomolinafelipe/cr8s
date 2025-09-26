@@ -30,7 +30,7 @@ pub struct OwnerReference {
     pub controller: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(PartialEq, Debug, Clone, Deserialize, Serialize)]
 pub enum OwnerKind {
     ReplicaSet,
 }
