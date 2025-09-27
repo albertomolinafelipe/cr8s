@@ -140,7 +140,9 @@ impl RSController {
                         tracing::error!("Couldnt parse pods");
                         return;
                     };
-                    tracing::debug!(len=%pods.len(), "Received");
+                    if pods.len() != rs.spec.replicas as usize {
+                        tracing::error!("Replicas dont match spec");
+                    }
                 }
                 Ok(resp) => tracing::error!("Failed to get pods: {}", resp.status()),
                 Err(err) => tracing::error!("Failed to get pods: {}", err),
