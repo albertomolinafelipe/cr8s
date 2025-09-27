@@ -15,4 +15,4 @@ fi
 
 export NODE_NAME="$HOSTNAME"
 
-exec /usr/local/bin/r8sagt
+exec /usr/local/bin/cr8sagt

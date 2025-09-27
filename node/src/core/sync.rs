@@ -101,7 +101,7 @@ mod tests {
 
     use std::sync::Arc;
 
-    use crate::{core::worker, docker::test::TestDocker, models::Config, state::new_state_with};
+    use crate::{core::worker, docker::test::TestDocker, models::Config, state::NodeState};
 
     use super::*;
     use bollard::secret::ContainerStateStatusEnum;
@@ -147,7 +147,7 @@ mod tests {
             server_url: mock_server.uri(),
             ..Default::default()
         };
-        let state = new_state_with(Some(config), Some(docker.clone()));
+        let state = NodeState::new_with(Some(config), Some(docker.clone()));
 
         let mock_server = start_mock_server().await;
         let (_, handle) = start_sync(state.clone()).await;
@@ -167,8 +167,10 @@ mod tests {
             server_url: mock_server.uri(),
             ..Default::default()
         };
-        let state = new_state_with(Some(config), Some(docker.clone()));
-        let pod = Pod::default();
+        let state = NodeState::new_with(Some(config), Some(docker.clone()));
+        let mut pod = Pod::default();
+        pod.metadata.generation += 1;
+        pod.spec.node_name = "some node".into();
 
         // create and add pod to state
         state.put_pod(&pod);

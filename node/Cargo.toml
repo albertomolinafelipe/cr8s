@@ -1,5 +1,5 @@
 [package]
-name = "r8sagt"
+name = "cr8sagt"
 version = "0.1.0"
 edition = "2024"
 description = "Node agent in kubernetes like orchestrator"
@@ -39,3 +39,4 @@ bollard = "0.19.2"
 # mocking control plane api server
 wiremock = "0.6"
 actix-http = "3.11.0"
+ctor = "0.5.0"

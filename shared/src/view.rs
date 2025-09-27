@@ -9,6 +9,7 @@ use tabled::Tabled;
 use crate::models::{
     node::{Node, NodeStatus},
     pod::{Pod, PodPhase},
+    replicaset::ReplicaSet,
 };
 
 // --- Display impls for status enums ---
@@ -37,9 +38,8 @@ impl std::fmt::Display for PodPhase {
     }
 }
 
-// --- Table display for Node ---
+// --- Node ---
 
-/// Implements `Tabled` for `Node`, enabling CLI tabular display.
 impl Tabled for Node {
     const LENGTH: usize = 5;
 
@@ -67,9 +67,8 @@ impl Tabled for Node {
     }
 }
 
-// --- Table display for PodObject ---
+// --- Pod ---
 
-/// Implements `Tabled` for `PodObject`, enabling CLI tabular display.
 impl Tabled for Pod {
     const LENGTH: usize = 5;
 
@@ -118,6 +117,37 @@ impl Tabled for Pod {
             Cow::Borrowed("READY"),
             Cow::Borrowed("STATUS"),
             Cow::Borrowed("RESTARTS"),
+            Cow::Borrowed("AGE"),
+        ]
+    }
+}
+
+// --- ReplicaSet ---
+
+impl Tabled for ReplicaSet {
+    const LENGTH: usize = 5;
+
+    fn fields(&self) -> Vec<Cow<'_, str>> {
+        vec![
+            Cow::Owned(self.metadata.name.clone()),
+            Cow::Owned(self.spec.replicas.to_string()),
+            Cow::Owned(self.status.ready_replicas.to_string()),
+            Cow::Owned(self.metadata.generation.to_string()),
+            Cow::Owned(human_duration(
+                Utc::now()
+                    .signed_duration_since(self.metadata.created_at)
+                    .to_std()
+                    .unwrap_or_default(),
+            )),
+        ]
+    }
+
+    fn headers() -> Vec<Cow<'static, str>> {
+        vec![
+            Cow::Borrowed("NAME"),
+            Cow::Borrowed("REPLICAS"),
+            Cow::Borrowed("READY"),
+            Cow::Borrowed("GENERATION"),
             Cow::Borrowed("AGE"),
         ]
     }

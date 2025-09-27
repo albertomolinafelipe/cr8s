@@ -1,5 +1,5 @@
 [package]
-name = "r8scp"
+name = "cr8scp"
 version = "0.1.0"
 edition = "2024"
 description = "Control plane component, apiserver, scheduler and drift controller"
@@ -40,3 +40,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "std"] }
 [dev-dependencies]
 wiremock = "0.6"
 actix-http = "3.11.0"
+ctor = "0.5.0"

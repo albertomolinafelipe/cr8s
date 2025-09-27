@@ -1,0 +1,25 @@
+kind: ReplicaSet
+metadata:
+  name: cont-repset
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+      name: cont-pod
+    spec:
+      containers:
+        - name: caddy
+          image: caddy:latest
+---
+kind: Pod
+metadata:
+  name: small-pod
+spec:
+  containers:
+    - name: small
+      image: busybox:latest

@@ -13,6 +13,7 @@
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
+            pkgs.gnumake
             pkgs.openssl
             pkgs.pkg-config
             pkgs.rustc

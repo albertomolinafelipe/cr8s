@@ -29,13 +29,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/app/target \
     bash -eux -c '\
-      cargo build -p r8sagt --release --target x86_64-unknown-linux-musl && \
-      install -Dm755 target/x86_64-unknown-linux-musl/release/r8sagt /out/r8sagt \
+      cargo build -p cr8sagt --release --target x86_64-unknown-linux-musl && \
+      install -Dm755 target/x86_64-unknown-linux-musl/release/cr8sagt /out/cr8sagt \
     '
 
 # ---- Runtime stage ----
 FROM docker:dind
-COPY --from=builder /out/r8sagt /usr/local/bin/r8sagt
+COPY --from=builder /out/cr8sagt /usr/local/bin/cr8sagt
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

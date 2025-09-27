@@ -18,7 +18,7 @@ pub async fn run(state: State, tx: Sender<WorkRequest>) -> Result<(), String> {
         "{}/pods?watch=true&nodeName={}",
         state.config.server_url, state.config.name
     );
-    watch_stream::<PodEvent, _>(&url, move |event| {
+    watch_stream(&url, move |event| {
         handle_event(state.clone(), event, &tx);
     })
     .await;
@@ -91,7 +91,7 @@ mod tests {
     //!     not supported
 
     use super::*;
-    use crate::{docker::test::TestDocker, models::Config, state::new_state_with};
+    use crate::{docker::test::TestDocker, models::Config, state::NodeState};
     use shared::{
         api::{EventType, PodEvent},
         models::pod::Pod,
@@ -101,7 +101,7 @@ mod tests {
     #[tokio::test]
     async fn test_modified_event() {
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(Config::default()), Some(docker));
+        let state = NodeState::new_with(Some(Config::default()), Some(docker));
         let pod = Pod::default();
 
         let (tx, mut rx) = mpsc::channel(1);
@@ -122,7 +122,7 @@ mod tests {
     #[tokio::test]
     async fn test_deleted_event() {
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(Config::default()), Some(docker));
+        let state = NodeState::new_with(Some(Config::default()), Some(docker));
         let pod = Pod::default();
         state.put_pod(&pod);
 
@@ -144,7 +144,7 @@ mod tests {
     #[tokio::test]
     async fn test_added_event() {
         let docker = Box::new(TestDocker::new());
-        let state = new_state_with(Some(Config::default()), Some(docker));
+        let state = NodeState::new_with(Some(Config::default()), Some(docker));
         let pod = Pod::default();
 
         let (tx, mut rx) = mpsc::channel(1);

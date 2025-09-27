@@ -8,16 +8,16 @@
 //! - `PATCH  /pods/{pod_name}/status`  — Update the pod's status
 //! - `GET    /pods/{pod_name}/logs`    — Get or stream pods logs
 
-use crate::State;
+use crate::state::State;
 use actix_web::{HttpResponse, Responder, web};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use shared::{
     api::{
-        CreateResponse, EventType, LogsQueryParams, PodEvent, PodField, PodManifest, PodPatch,
-        PodQueryParams, PodStatusUpdate,
+        CreatePodParams, CreateResponse, EventType, LogsQueryParams, PodEvent, PodField,
+        PodManifest, PodPatch, PodQueryParams, PodStatusUpdate,
     },
-    models::pod::PodSpec,
+    models::{metadata::LabelSelector, pod::PodSpec},
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -34,14 +34,24 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 /// - `query`: Query parameters:
 ///    - `watch` (bool, optional): If true, opens a watch stream of pod events.
 ///    - `node_name` (String, optional): Filter pods assigned to the specified node.
+///    - `labelSelector` (K=V, optional): select pods by
 ///
 /// # Returns
 /// - 200 list of pods or stream of pod events
-async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder {
+async fn get(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
+    let query = q.into_inner();
+    let node_name = query.node_name.clone();
+
+    let Ok(selector) = LabelSelector::try_from(query.label_selector) else {
+        return HttpResponse::BadRequest().finish();
+    };
+    if query.watch.unwrap_or(false) && !selector.match_labels.is_empty() {
+        return HttpResponse::BadRequest().finish();
+    };
+
     if query.watch.unwrap_or(false) {
         // Watch mode
-        let node_name = query.node_name.clone();
-        let pods = state.get_pods(node_name.clone()).await;
+        let pods = state.get_pods(&node_name, &selector.match_labels).await;
         let stream = async_stream::stream! {
             // List all pods as added events
             for p in &pods {
@@ -75,7 +85,7 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
             .streaming(stream)
     } else {
         // Normal list
-        let pods = state.get_pods(query.node_name.clone()).await;
+        let pods = state.get_pods(&node_name, &selector.match_labels).await;
         HttpResponse::Ok()
             .content_type("application/json")
             .body(serde_json::to_string(&pods).unwrap())
@@ -181,20 +191,34 @@ async fn update_status(
 /// - 201: Pod created.
 /// - 400: Invalid manifest format
 /// - 409: Repeat pod
-async fn create(state: State, body: web::Json<PodManifest>) -> impl Responder {
-    let spec_obj = body.into_inner();
-    let pod_name = spec_obj.metadata.name.clone();
+async fn create(
+    state: State,
+    query: web::Query<CreatePodParams>,
+    payload: web::Json<PodManifest>,
+) -> impl Responder {
+    let manifest = payload.into_inner();
+    let controller_call = query.controller.unwrap_or(false);
 
-    if state.cache.pod_name_exists(&spec_obj.metadata.name) {
+    // if controller true must have owner reference
+    // if no controller it cant have owner reference
+    if (controller_call && manifest.metadata.owner_reference.is_none())
+        || (!controller_call && manifest.metadata.owner_reference.is_some())
+    {
+        return HttpResponse::BadRequest().finish();
+    }
+
+    let pod_name = manifest.metadata.name.clone();
+
+    if state.cache.pod_name_exists(&pod_name) {
         return HttpResponse::Conflict().body("Duplicate pod name");
     };
 
     let pod_spec = PodSpec {
         node_name: "".to_string(),
-        containers: spec_obj.spec,
+        containers: manifest.spec.containers,
     };
 
-    match state.add_pod(pod_spec, spec_obj.metadata.into()).await {
+    match state.add_pod(pod_spec, manifest.metadata.into()).await {
         Ok(id) => {
             tracing::info!(
                 name=%pod_name,
@@ -363,7 +387,7 @@ mod tests {
     //!  - test_delete_not_found
 
     use crate::endpoints::helpers::collect_stream_events;
-    use crate::store::{new_state_with_store, test_store::TestStore};
+    use crate::state::{ApiServerState, test_store::TestStore};
 
     use super::*;
     use actix_web::body::BoxBody;
@@ -374,7 +398,7 @@ mod tests {
         test::{self, TestRequest, call_service, init_service, read_body_json},
     };
     use serde_json::Value;
-    use shared::api::UserMetadata;
+    use shared::models::metadata::ObjectMetadata;
     use shared::models::pod::PodStatus;
     use shared::models::{
         node::Node,
@@ -411,7 +435,7 @@ mod tests {
 
     async fn add_pod(state: &State) -> String {
         let spec = PodSpec::default();
-        let metadata = UserMetadata::default();
+        let metadata = ObjectMetadata::default();
         assert!(state.add_pod(spec, metadata.clone().into()).await.is_ok());
         return metadata.name;
     }
@@ -420,7 +444,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_get_pods_query() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let _ = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -436,7 +460,7 @@ mod tests {
     #[actix_web::test]
     async fn test_get_pods_watch() {
         // Add initial assigned pod
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let (node_name, pod_name_1) = add_assigned_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -477,7 +501,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let (node_name, pod_name) = add_assigned_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -500,7 +524,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status_pod_name_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -524,7 +548,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status_node_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
         let app = pod_service(&state).await;
 
@@ -546,7 +570,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_status_not_assigned_to_caller() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -573,7 +597,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -594,7 +618,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod_invalid_node_name() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -612,7 +636,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let n = Node::default();
         assert!(state.add_node(&n).await.is_ok());
 
@@ -631,7 +655,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_assign_pod_already_assigned() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let (node_name, pod_name) = add_assigned_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -651,7 +675,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_update_pod_spec() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -671,7 +695,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_pod() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
 
         let app = pod_service(&state).await;
         let req = TestRequest::post()
@@ -684,7 +708,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_pod_repeat_name() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
         let mut payload = PodManifest::default();
         payload.metadata.name = pod_name;
@@ -700,10 +724,10 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_pod_repeat_container_name() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let mut payload = PodManifest::default();
         let container = ContainerSpec::default();
-        payload.spec = vec![container.clone(), container];
+        payload.spec.containers = vec![container.clone(), container];
 
         let app = pod_service(&state).await;
         let req = TestRequest::post()
@@ -716,7 +740,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_delete_pod() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let pod_name = add_pod(&state).await;
 
         let app = pod_service(&state).await;
@@ -737,7 +761,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_delete_pod_not_found() {
-        let state = new_state_with_store(Box::new(TestStore::new())).await;
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let app = pod_service(&state).await;
 
         let req = TestRequest::delete().uri("/pods/made-up").to_request();

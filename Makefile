@@ -1,5 +1,5 @@
 CACHE   ?= 0           # 0/1 -> influences buildx cache
-NODES   ?= 1           # number of r8sagt replicas
+NODES   ?= 1           # number of cr8sagt replicas
 GRAFANA ?= 0           # 0/1 -> toggles grafana profile
 LOG_LEVEL ?= debug
 CI ?= 0
@@ -31,13 +31,13 @@ COMPONENTS := server node
 CLI := cli
 
 # Crate names
-CRATE_server := r8scp
-CRATE_node   := r8sagt
-CRATE_cli    := r8sctl
+CRATE_server := cr8scp
+CRATE_node   := cr8sagt
+CRATE_cli    := cr8sctl
 
 # Docker image tags
-docker_image_server := r8scp
-docker_image_node   := r8sagt
+docker_image_server := cr8scp
+docker_image_node   := cr8sagt
 
 BUILD_CACHE := .buildx-cache
 CACHE_FROM := --cache-from=type=local,src=$(BUILD_CACHE)
@@ -120,7 +120,7 @@ else
   COMPOSE_PROFILES :=
 endif
 
-SCALE_FLAG := $(if $(NODES),--scale r8sagt=$(NODES),)
+SCALE_FLAG := $(if $(NODES),--scale cr8sagt=$(NODES),)
 
 up: down
 	COMPOSE_PROFILES=$(COMPOSE_PROFILES) \

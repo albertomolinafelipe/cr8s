@@ -113,12 +113,7 @@ impl SchedulerFlow {
         };
 
         let client = Client::new();
-        let base_url = self
-            .state
-            .api_server
-            .as_deref()
-            .unwrap_or("http://localhost:7620");
-        let url = format!("{}/pods/{}", base_url, self.pod.metadata.name);
+        let url = format!("{}/{}", self.state.pods_uri, self.pod.metadata.name);
 
         match client.patch(&url).json(&patch).send().await {
             Ok(resp) if resp.status().is_success() => {
@@ -129,15 +124,11 @@ impl SchedulerFlow {
                 );
                 self.accepted = true;
             }
-            Ok(resp) => {
-                tracing::error!(
-                    status = %resp.status(),
-                    "Failed to patch pod: non-success response"
-                );
-            }
-            Err(err) => {
-                tracing::error!("Failed to patch pod: {}", err);
-            }
+            Ok(resp) => tracing::error!(
+                status = %resp.status(),
+                "Failed to patch pod: non-success response"
+            ),
+            Err(err) => tracing::error!("Failed to patch pod: {}", err),
         }
         self
     }

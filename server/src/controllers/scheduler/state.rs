@@ -3,14 +3,9 @@ use rand::Rng;
 use rand::prelude::IndexedRandom;
 use shared::models::{node::Node, pod::Pod};
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 pub type State = Arc<SchedulerState>;
-
-pub fn new_state(pod_tx: Sender<Uuid>, api_server: Option<String>) -> State {
-    Arc::new(SchedulerState::new(pod_tx, api_server))
-}
 
 /// In-memory scheduler state shared across tasks.
 #[derive(Debug)]
@@ -18,28 +13,23 @@ pub struct SchedulerState {
     pub nodes: DashMap<String, Node>,
     pub pods: DashMap<Uuid, Pod>,
     pub pod_map: DashMap<String, DashSet<Uuid>>,
-    pub pod_tx: Sender<Uuid>,
 
     pub pod_resources: DashMap<Uuid, SimResources>,
     pub node_resources: DashMap<String, SimResources>,
 
-    /// optional apiserver attribute for mock test
-    /// otherwise we use hardcoded value
-    /// should be read from env, but idc
-    pub api_server: Option<String>,
+    pub pods_uri: String,
 }
 
 impl SchedulerState {
-    fn new(pod_tx: Sender<Uuid>, api_server: Option<String>) -> Self {
-        Self {
+    pub fn new(apiserver: &str) -> State {
+        Arc::new(Self {
             nodes: DashMap::new(),
             pods: DashMap::new(),
             pod_map: DashMap::new(),
-            pod_tx,
             node_resources: DashMap::new(),
             pod_resources: DashMap::new(),
-            api_server,
-        }
+            pods_uri: format!("{}/pods", apiserver),
+        })
     }
 
     pub fn add_pod(&self, pod: &Pod) {
@@ -53,7 +43,6 @@ impl SchedulerState {
             .or_insert_with(DashSet::new)
             .insert(pod.metadata.id);
         // send pod id to channel for scheduling
-        let _ = self.pod_tx.try_send(pod.metadata.id);
     }
 
     pub fn add_node(&self, node: &Node) {

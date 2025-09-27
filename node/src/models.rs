@@ -52,8 +52,8 @@ impl Config {
     pub fn from_env() -> Self {
         let mut config = Config::default();
 
-        if let Ok(addr) = env::var("R8S_SERVER_HOST") {
-            let port = env::var("R8S_SERVER_PORT")
+        if let Ok(addr) = env::var("CR8S_SERVER_HOST") {
+            let port = env::var("CR8S_SERVER_PORT")
                 .ok()
                 .and_then(|s| s.parse::<u16>().ok())
                 .unwrap_or(7620);
@@ -69,7 +69,7 @@ impl Config {
 
         config.name = env::var("NODE_NAME").unwrap_or_else(|_| {
             let uuid = Uuid::new_v4().to_string();
-            format!("r8sagt-{}", &uuid[..4])
+            format!("cr8sagt-{}", &uuid[..4])
         });
 
         if let Some(val) = env::var("SYNC_LOOP_INTERVAL")

@@ -10,6 +10,7 @@ use std::fmt;
 pub enum ResourceType {
     Nodes,
     Pods,
+    Replicasets,
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]
@@ -23,6 +24,7 @@ impl fmt::Display for ResourceType {
         let s = match self {
             ResourceType::Nodes => "nodes",
             ResourceType::Pods => "pods",
+            ResourceType::Replicasets => "replicasets",
         };
         write!(f, "{}", s)
     }

@@ -635,6 +635,75 @@ dependencies = [
 ]
 
 [[package]]
+name = "cr8sagt"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-web",
+ "async-stream",
+ "async-trait",
+ "bollard",
+ "bytes",
+ "chrono",
+ "ctor",
+ "dashmap",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
+name = "cr8scp"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-web",
+ "async-stream",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "ctor",
+ "dashmap",
+ "etcd-client",
+ "futures",
+ "futures-util",
+ "rand",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
+name = "cr8sctl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "erased-serde",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_yaml",
+ "shared",
+ "tabled",
+ "tokio",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -658,6 +727,22 @@ dependencies = [
  "generic-array",
  "typenum",
 ]
+
+[[package]]
+name = "ctor"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67773048316103656a637612c4a62477603b777d91d9c62ff2290f9cde178fdb"
+dependencies = [
+ "ctor-proc-macro",
+ "dtor",
+]
+
+[[package]]
+name = "ctor-proc-macro"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2931af7e13dc045d8e9d26afccc6fa115d64e115c9c84b1166288b46f6782c2"
 
 [[package]]
 name = "dashmap"
@@ -742,6 +827,21 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "dtor"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e58a0764cddb55ab28955347b45be00ade43d4d6f3ba4bf3dc354e4ec9432934"
+dependencies = [
+ "dtor-proc-macro",
+]
+
+[[package]]
+name = "dtor-proc-macro"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f678cf4a922c215c63e0de95eb1ff08a958a81d47e485cf9da1e27bf6305cfa5"
 
 [[package]]
 name = "dyn-clone"
@@ -1902,73 +2002,6 @@ name = "r-efi"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
-
-[[package]]
-name = "r8sagt"
-version = "0.1.0"
-dependencies = [
- "actix-http",
- "actix-web",
- "async-stream",
- "async-trait",
- "bollard",
- "bytes",
- "chrono",
- "dashmap",
- "futures-util",
- "reqwest",
- "serde",
- "serde_json",
- "shared",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wiremock",
-]
-
-[[package]]
-name = "r8scp"
-version = "0.1.0"
-dependencies = [
- "actix-http",
- "actix-web",
- "async-stream",
- "async-trait",
- "bytes",
- "chrono",
- "dashmap",
- "etcd-client",
- "futures",
- "futures-util",
- "rand",
- "reqwest",
- "serde",
- "serde_json",
- "shared",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wiremock",
-]
-
-[[package]]
-name = "r8sctl"
-version = "0.1.0"
-dependencies = [
- "clap",
- "erased-serde",
- "futures-util",
- "reqwest",
- "serde",
- "serde_yaml",
- "shared",
- "tabled",
- "tokio",
-]
 
 [[package]]
 name = "rand"

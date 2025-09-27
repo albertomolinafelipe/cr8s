@@ -6,8 +6,12 @@ use erased_serde::serialize_trait_object;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{
-    api::{PodManifest, UserMetadata},
-    models::pod::ContainerSpec,
+    api::{PodContainers, PodManifest, ReplicaSetManifest},
+    models::{
+        metadata::{LabelSelector, ObjectMetadata},
+        pod::ContainerSpec,
+        replicaset::ReplicaSetSpec,
+    },
 };
 use tokio::fs;
 
@@ -48,15 +52,13 @@ pub async fn handle_create(config: &Config, args: &CreateArgs) {
     // send each manifest to the specified resource endpoint
     let client = Client::new();
     for object in docs {
-        let url = format!("{}/{}s", config.url, object.spec);
+        let url = format!("{}/{}s?controller=false", config.url, object.spec);
         let manifest = object.spec.into_manifest(object.metadata);
 
         match client.post(&url).json(&manifest).send().await {
             Ok(_) => {}
             Err(err) => eprintln!("Error: {:?}", err),
         };
-        //use tokio::time::{Duration, sleep};
-        //sleep(Duration::from_millis(50)).await;
     }
 }
 
@@ -72,7 +74,7 @@ serialize_trait_object!(Manifest);
 /// Represents a top-level Kubernetes-like object with metadata and a kind-specific spec.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenericManifest {
-    pub metadata: UserMetadata,
+    pub metadata: ObjectMetadata,
     #[serde(flatten)]
     pub spec: Spec,
 }
@@ -83,19 +85,36 @@ pub struct GenericManifest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "spec", rename_all = "PascalCase")]
 pub enum Spec {
-    Pod { containers: Vec<ContainerSpec> },
-    Deployment,
+    Pod {
+        containers: Vec<ContainerSpec>,
+    },
+    ReplicaSet {
+        replicas: u16,
+        selector: LabelSelector,
+        template: PodManifest,
+    },
 }
 
 impl Spec {
     /// Converts the enum variant into a boxed `Manifest` implementation.
-    pub fn into_manifest(self, metadata: UserMetadata) -> Box<dyn Manifest> {
+    pub fn into_manifest(self, metadata: ObjectMetadata) -> Box<dyn Manifest> {
         match self {
             Spec::Pod { containers } => Box::new(PodManifest {
                 metadata,
-                spec: containers,
+                spec: PodContainers { containers },
             }),
-            Spec::Deployment => unimplemented!("Deployment support not implemented yet"),
+            Spec::ReplicaSet {
+                replicas,
+                selector,
+                template,
+            } => Box::new(ReplicaSetManifest {
+                metadata,
+                spec: ReplicaSetSpec {
+                    replicas,
+                    selector,
+                    template,
+                },
+            }),
         }
     }
 }
@@ -105,7 +124,7 @@ impl std::fmt::Display for Spec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Spec::Pod { .. } => write!(f, "pod"),
-            Spec::Deployment => write!(f, "deployment"),
+            Spec::ReplicaSet { .. } => write!(f, "replicaset"),
         }
     }
 }

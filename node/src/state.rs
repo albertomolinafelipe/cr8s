@@ -19,17 +19,6 @@ use crate::{
 /// Thread safe wrapper
 pub type State = Data<NodeState>;
 
-pub fn new_state() -> State {
-    Data::new(NodeState::new(None, None))
-}
-
-pub fn new_state_with(
-    config_in: Option<Config>,
-    docker_in: Option<Box<dyn DockerClient + Send + Sync>>,
-) -> State {
-    Data::new(NodeState::new(config_in, docker_in))
-}
-
 /// Global in-memory state for a single node.
 pub struct NodeState {
     pub config: Config,
@@ -40,10 +29,10 @@ pub struct NodeState {
 
 impl NodeState {
     /// Initializes a new [`NodeState`] instance, loading config and starting Docker manager.
-    fn new(
+    pub fn new_with(
         config_in: Option<Config>,
         docker_in: Option<Box<dyn DockerClient + Send + Sync>>,
-    ) -> Self {
+    ) -> State {
         let docker_mgr = docker_in.unwrap_or_else(|| {
             Box::new(
                 DockerManager::start()
@@ -55,13 +44,15 @@ impl NodeState {
         });
 
         let config = config_in.unwrap_or_else(Config::from_env);
-
-        Self {
+        Data::new(Self {
             config,
             docker_mgr,
             pods: DashMap::new(),
             pod_runtimes: DashMap::new(),
-        }
+        })
+    }
+    pub fn new() -> State {
+        Self::new_with(None, None)
     }
 
     // --- Pods ---

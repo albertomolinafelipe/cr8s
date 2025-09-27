@@ -4,77 +4,117 @@
 //! Provides abstraction for persistent storage and caching layer
 //! Event broadcasting mechanism for notifications on watches
 
-use actix_web::web::Data;
+mod cache;
+mod errors;
+mod store;
+#[cfg(test)]
+pub mod test_store;
+
+use actix_web::web;
 use chrono::Utc;
 use futures::future::join_all;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use shared::{
-    api::{EventType, NodeEvent, PodEvent},
-    models::node::Node,
-    models::pod::{Metadata, Pod, PodSpec, PodStatus},
+    api::{EventType, NodeEvent, PodEvent, ReplicaSetEvent},
+    models::{
+        metadata::Metadata,
+        node::Node,
+        pod::{ContainerSpec, Pod, PodSpec, PodStatus},
+        replicaset::{ReplicaSet, ReplicaSetSpec, ReplicaSetStatus},
+    },
 };
 
-use crate::{State, store::cache::CacheManager};
+use cache::CacheManager;
+use errors::StoreError;
+use store::{EtcdStore, Store};
 
-use super::{
-    errors::StoreError,
-    store::{EtcdStore, Store},
-};
-
-/// Initializes a new application state using the default Etcd-backed store.
-pub async fn new_state() -> State {
-    Data::new(R8s::default_with_store(Box::new(EtcdStore::new().await)).await)
-}
-
-#[cfg(test)]
-pub async fn new_state_with_store(store: Box<dyn Store + Send + Sync>) -> State {
-    Data::new(R8s::default_with_store(store).await)
-}
+pub type State = web::Data<ApiServerState>;
 
 /// Core with storage, caches, and event channels.
-pub struct R8s {
+pub struct ApiServerState {
     store: Box<dyn Store + Send + Sync>,
-    /// Broadcast channel for pod-related events.
+    /// Broadcast channels
     pub pod_tx: broadcast::Sender<PodEvent>,
-    /// Broadcast channel for node-related events.
     pub node_tx: broadcast::Sender<NodeEvent>,
+    pub replicaset_tx: broadcast::Sender<ReplicaSetEvent>,
     /// In-memory fast-access cache for node/pod metadata.
     pub cache: CacheManager,
 }
 
-impl R8s {
+impl ApiServerState {
     //! - add_pod(spec, metadata): Validate and add a new pod to the store and cache, then broadcast an event
     //! - delete_pod(name): Remove a pod the store and cache, then broadcast an event
     //! - assign_pod(name, node_name): Assign an unassigned pod to a  ode, update store and cache, broadcast event
     //! - update_pod_status(id, status, cont_status): Update the status and container statuses of a pod
     //! - get_pods(query): List pods optionally filtered by node name
     //!
+    //! - add_replicaset(sepc, metadata)
+    //! - get_replicasets()
+    //!
     //! - add_node(node): Add a new node to the store and cache, then broadcast an event
     //! - get_nodes(): Retrieve all Nodes from the store
     //! - get_node(name): Get a specific Node by name from the store
     //! - update_node_heartbeat(node_name): Update the heartbeat timestamp of a node in the store
 
-    /// Constructs a new instance with a custom store implementation.
-    async fn default_with_store(store: Box<dyn Store + Send + Sync>) -> Self {
+    /// Construc ts a new instance with a custom store implementation.
+
+    pub async fn new() -> State {
+        Self::new_with_store(Box::new(EtcdStore::new().await)).await
+    }
+
+    pub async fn new_with_store(store: Box<dyn Store + Send + Sync>) -> State {
         let (pod_tx, _) = broadcast::channel(10);
         let (node_tx, _) = broadcast::channel(10);
-        Self {
+        let (replicaset_tx, _) = broadcast::channel(10);
+        let cache = CacheManager::new();
+        web::Data::new(Self {
             store,
             pod_tx,
             node_tx,
-            cache: CacheManager::new(),
-        }
+            replicaset_tx,
+            cache,
+        })
+    }
+
+    pub async fn add_replicaset(
+        &self,
+        spec: ReplicaSetSpec,
+        metadata: Metadata,
+    ) -> Result<Uuid, StoreError> {
+        validate_container_list(&spec.template.spec.containers)?;
+
+        // save object and metadata in store and cache
+        let rs = ReplicaSet {
+            spec,
+            metadata,
+            status: ReplicaSetStatus::default(),
+        };
+
+        self.store.put_replicaset(&rs.metadata.id, &rs).await?;
+        self.cache.add_replicaset(&rs.metadata.name);
+
+        // send event
+        let event = ReplicaSetEvent {
+            event_type: EventType::Added,
+            replicaset: rs.clone(),
+        };
+        let _ = self.replicaset_tx.send(event);
+        Ok(rs.metadata.id)
+    }
+
+    /// Retrieves all replicasets.
+    pub async fn get_replicasets(&self) -> Vec<ReplicaSet> {
+        self.store.list_replicasets().await.unwrap_or_default()
     }
 
     /// Adds a new pod, assigns it a UUID, and emits a PodEvent.
     pub async fn add_pod(&self, spec: PodSpec, metadata: Metadata) -> Result<Uuid, StoreError> {
         // validate spec and name
-        validate_pod(&spec)?;
+        validate_container_list(&spec.containers)?;
 
-        // since its low level manifest is not stored
         let pod = Pod {
             spec,
             metadata,
@@ -83,7 +123,9 @@ impl R8s {
 
         // save object and metadata in store and cache
         self.store.put_pod(&pod.metadata.id, &pod).await?;
-        self.cache.add_pod(&pod.metadata.name, pod.metadata.id);
+        self.cache.add_pod(&pod.metadata.name, &pod.metadata.id);
+        self.cache
+            .add_pod_labels(&pod.metadata.id, &pod.metadata.labels);
 
         // send event
         let event = PodEvent {
@@ -111,6 +153,7 @@ impl R8s {
         // clean store and cache
         self.store.delete_pod(&id).await?;
         self.cache.delete_pod(name);
+        self.cache.remove_pod_labels(&id, &pod.metadata.labels);
 
         // send delete event
         let event = PodEvent {
@@ -195,26 +238,27 @@ impl R8s {
     }
 
     /// Retrieves all pods, or only those scheduled on a specific node.
-    pub async fn get_pods(&self, query: Option<String>) -> Vec<Pod> {
-        match query {
-            Some(node_name) => {
-                let Some(pod_ids_ref) = self.cache.get_pod_ids(&node_name) else {
-                    return vec![];
-                };
-                join_all(pod_ids_ref.iter().map(|id| self.store.get_pod(id.clone())))
-                    .await
-                    .into_iter()
-                    .inspect(|res| {
-                        if let Err(e) = res {
-                            tracing::error!(error=%e, "Error fetching pod");
-                        }
-                    })
-                    .filter_map(Result::ok)
-                    .flatten()
-                    .collect()
-            }
-            None => self.store.list_pods().await.unwrap_or_default(),
+    pub async fn get_pods(
+        &self,
+        node_query: &Option<String>,
+        label_query: &HashMap<String, String>,
+    ) -> Vec<Pod> {
+        if node_query.is_none() && label_query.is_empty() {
+            return self.store.list_pods().await.unwrap_or_default();
         }
+
+        let pod_ids = self.cache.query_pods(node_query, label_query);
+        join_all(pod_ids.iter().map(|id| self.store.get_pod(id.clone())))
+            .await
+            .into_iter()
+            .inspect(|res| {
+                if let Err(e) = res {
+                    tracing::error!(error=%e, "Error fetching pod");
+                }
+            })
+            .filter_map(Result::ok)
+            .flatten()
+            .collect()
     }
 
     /// Adds a new node
@@ -258,10 +302,10 @@ impl R8s {
 }
 
 /// Validates pod spec for duplicate container names.
-fn validate_pod(spec: &PodSpec) -> Result<(), StoreError> {
+fn validate_container_list(list: &Vec<ContainerSpec>) -> Result<(), StoreError> {
     let mut seen_names = HashSet::new();
 
-    for container in &spec.containers {
+    for container in list {
         if !seen_names.insert(&container.name) {
             return Err(StoreError::WrongFormat(format!(
                 "Duplicate container name found: '{}'",

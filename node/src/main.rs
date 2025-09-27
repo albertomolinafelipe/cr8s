@@ -6,34 +6,49 @@
 //!
 //! Each subsystem communicates via a shared application state and message channels.
 
-use r8sagt::{
-    api,
-    core::{sync, watcher, worker},
-    models::WorkRequest,
-    state::new_state,
-};
 use tokio::sync::mpsc;
 use tracing_subscriber::{self, EnvFilter};
 
+use crate::{models::WorkRequest, state::NodeState};
+
+mod api;
+mod core;
+mod docker;
+pub mod models;
+mod state;
+
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let state = new_state();
-
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn,node=trace"));
+        .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn"));
 
-    let node_name = state.config.name.clone();
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
-    let _ = tracing::info_span!("", node = %node_name).enter();
 
     let (tx, rx) = mpsc::channel::<WorkRequest>(100);
+    let state = NodeState::new();
 
-    let watcher_fut = watcher::run(state.clone(), tx);
-    let worker_fut = worker::run(state.clone(), rx);
-    let sync_fut = sync::run(state.clone());
-    let api_fut = api::run(state.clone());
-
-    tokio::try_join!(api_fut, worker_fut, sync_fut, watcher_fut)?;
+    tokio::try_join!(
+        api::run(state.clone()),
+        core::sync::run(state.clone()),
+        core::worker::run(state.clone(), rx),
+        core::watcher::run(state.clone(), tx),
+    )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test_setup {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    #[ctor::ctor]
+    fn init_tracing() {
+        INIT.call_once(|| {
+            tracing_subscriber::fmt()
+                .with_env_filter(format!("{}=trace", env!("CARGO_PKG_NAME")))
+                .with_test_writer()
+                .init();
+        });
+    }
 }

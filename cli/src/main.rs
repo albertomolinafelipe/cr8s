@@ -13,10 +13,10 @@ use crate::{
 mod commands;
 mod config;
 
-/// CLI tool to interact with the r8s cluster: deploy, inspect, and manage workloads and resources.
+/// CLI tool to interact with the cr8s cluster: deploy, inspect, and manage workloads and resources.
 #[derive(Parser, Debug)]
-#[command(name = "r8sctl", version, about, long_about = None)]
-struct R8sCtl {
+#[command(name = "cr8sctl", version, about, long_about = None)]
+struct Cr8sCtl {
     #[command(subcommand)]
     command: Commands,
 }
@@ -35,7 +35,7 @@ enum Commands {
 
 #[tokio::main]
 async fn main() {
-    let cli = R8sCtl::parse();
+    let cli = Cr8sCtl::parse();
     let config = Config::from_env();
     match cli.command {
         Commands::Get(args) => handle_get(&config, &args).await,

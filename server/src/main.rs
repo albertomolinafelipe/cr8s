@@ -1,20 +1,14 @@
-//! r8s-server entrypoint.
+//! cr8s-server entrypoint.
 //! Starts the Actix-web server and launches the scheduler and drift controller
 
-use actix_web::{App, HttpResponse, HttpServer, Responder, web};
-use std::env;
+use actix_web::{App, HttpServer};
 use tracing_subscriber::{self, EnvFilter};
 
 mod controllers;
 mod endpoints;
-mod scheduler;
-mod store;
+mod state;
 
-use endpoints::log::Logging;
-use store::{R8s, new_state};
-
-const DEFAULT_PORT: u16 = 7620;
-type State = web::Data<R8s>;
+use state::ApiServerState;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -22,43 +16,37 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or_else(|_| EnvFilter::new("actix_server=warn,actix_web=warn"));
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
-    let config = Config::from_env();
-    let state: State = new_state().await;
+    let state = ApiServerState::new().await;
+    let port = std::env::var("CR8S_SERVER_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(7620);
 
-    // Start background scheduler and garbage collector
-    tokio::spawn(scheduler::run());
-    tokio::spawn(controllers::garbage_collector::run());
+    controllers::run(format!("http://localhost:{}", port));
 
-    // Start apiserver
     let server = HttpServer::new(move || {
         App::new()
-            .wrap(Logging)
             .app_data(state.clone())
             .configure(endpoints::config)
-            .route("/", web::get().to(root))
+            .wrap(endpoints::Logging)
     })
-    .bind(("0.0.0.0", config.port))?;
+    .bind(("0.0.0.0", port))?;
 
     server.run().await
 }
 
-async fn root() -> impl Responder {
-    HttpResponse::Ok().body("Hello from r8s-server")
-}
+#[cfg(test)]
+mod test_setup {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
 
-// ------------
-
-struct Config {
-    port: u16,
-}
-
-impl Config {
-    fn from_env() -> Self {
-        Self {
-            port: env::var("R8S_SERVER_PORT")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(DEFAULT_PORT),
-        }
+    #[ctor::ctor]
+    fn init_tracing() {
+        INIT.call_once(|| {
+            tracing_subscriber::fmt()
+                .with_env_filter(format!("{}=trace", env!("CARGO_PKG_NAME")))
+                .with_test_writer()
+                .init();
+        });
     }
 }

@@ -94,7 +94,7 @@ impl DockerManager {
 
         let mut stream = docker.create_image(options, None, None);
 
-        tracing::info!(%image, "Pulling");
+        tracing::debug!(%image, "Pulling");
         while let Some(_status) = stream
             .try_next()
             .await
@@ -136,7 +136,7 @@ impl DockerClient for DockerManager {
 
             // build unique name
             // NOTE: without namespaces or restarts
-            let container_name = format!("r8s_{}_{}", container_spec.name, pod.metadata.name);
+            let container_name = format!("cr8s_{}_{}", container_spec.name, pod.metadata.name);
 
             // build container config from spec
             let config = ContainerCreateBody {
@@ -185,7 +185,7 @@ impl DockerClient for DockerManager {
             );
         }
 
-        tracing::debug!(
+        tracing::info!(
             pod=%pod.metadata.name,
             "Started"
         );
