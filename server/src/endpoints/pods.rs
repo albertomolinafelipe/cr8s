@@ -34,24 +34,28 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 /// - `query`: Query parameters:
 ///    - `watch` (bool, optional): If true, opens a watch stream of pod events.
 ///    - `node_name` (String, optional): Filter pods assigned to the specified node.
-///    - `labelSelector` (K=V, optional): select pods by
+///    - `labelSelector` (K=V, optional): select pods by label
 ///
 /// # Returns
 /// - 200 list of pods or stream of pod events
+/// - 400 wrong label selector formator
+/// - 501 labelSelect and watch is not implemented
 async fn get(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
     let query = q.into_inner();
     let node_name = query.node_name.clone();
 
+    // format `&labelSelector=k1=v1,k2=v2` into hashmap
     let Ok(selector) = LabelSelector::try_from(query.label_selector) else {
         return HttpResponse::BadRequest().finish();
     };
+    // label fil
     if query.watch.unwrap_or(false) && !selector.match_labels.is_empty() {
-        return HttpResponse::BadRequest().finish();
+        return HttpResponse::NotImplemented().finish();
     };
 
+    let pods = state.get_pods(&node_name, &selector.match_labels).await;
     if query.watch.unwrap_or(false) {
         // Watch mode
-        let pods = state.get_pods(&node_name, &selector.match_labels).await;
         let stream = async_stream::stream! {
             // List all pods as added events
             for p in &pods {
@@ -84,8 +88,6 @@ async fn get(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
             .content_type("application/json")
             .streaming(stream)
     } else {
-        // Normal list
-        let pods = state.get_pods(&node_name, &selector.match_labels).await;
         HttpResponse::Ok()
             .content_type("application/json")
             .body(serde_json::to_string(&pods).unwrap())
@@ -363,6 +365,9 @@ mod tests {
     //!  - test_get_pods_query
     //!  - test_get_pods_watch
     //!         pods added before and after watch call, assigned and unassigned
+    //!  - test_get_pod_label_selector_format
+    //!  - test_get_pod_param_conflict
+    //!  - test_get_pod_label_and_node_filter
     //!
     //!  PATCH POD
     //!  - test_assign_pod
@@ -495,6 +500,78 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].pod.metadata.name, pod_name_2);
         assert_eq!(events[0].pod.spec.node_name, "");
+    }
+
+    #[actix_web::test]
+    async fn test_get_pod_label_selector_format() {
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
+
+        let app = pod_service(&state).await;
+
+        let req = TestRequest::get()
+            .uri("/pods?labelSelector=wrong-format=,bad=1")
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[actix_web::test]
+    async fn test_get_pod_param_conflict() {
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
+
+        let app = pod_service(&state).await;
+
+        let req = TestRequest::get()
+            .uri("/pods?labelSelector=app=web,level=frontend&watch=true")
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+    }
+
+    #[actix_web::test]
+    async fn test_get_pod_label_and_node_filter() {
+        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
+
+        // Add assigned pod
+        let n = Node::default();
+        let spec = PodSpec::default();
+        let mut metadata = ObjectMetadata::default();
+        metadata.labels = [
+            ("app".into(), "web".into()),
+            ("level".into(), "frontend".into()),
+        ]
+        .into();
+
+        assert!(state.add_node(&n).await.is_ok());
+        assert!(state.add_pod(spec, metadata.clone().into()).await.is_ok());
+        assert!(
+            state
+                .assign_pod(&metadata.name, n.name.clone())
+                .await
+                .is_ok()
+        );
+
+        let app = pod_service(&state).await;
+
+        // Use node name and label
+        let req = test::TestRequest::get()
+            .uri(&format!("/pods?labelSelector=app=web&nodeName={}", n.name))
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let pods: Vec<Pod> = read_body_json(resp).await;
+        assert_eq!(pods.len(), 1, "There should be a single pod");
+
+        // Use just label
+        let req = test::TestRequest::get()
+            .uri("/pods?labelSelector=app=web,level=frontend")
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let pods: Vec<Pod> = read_body_json(resp).await;
+        assert_eq!(pods.len(), 1, "There should be a single pod");
     }
 
     // --- Patch Status ---
