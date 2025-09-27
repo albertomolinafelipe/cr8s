@@ -7,8 +7,8 @@ use std::sync::Arc;
 use reqwest::Client;
 use shared::{
     api::{EventType, PodEvent, PodManifest, ReplicaSetEvent},
-    models::metadata::OwnerKind,
-    utils::watch_stream,
+    models::{metadata::OwnerKind, pod::Pod},
+    utils::{watch_stream, watch_stream_async},
 };
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -45,10 +45,12 @@ impl RSController {
             {
                 let rsc = rsc.clone();
                 tokio::spawn(async move {
-                    watch_stream::<PodEvent, _>(
-                        &format!("{}?watch=true", rsc.pods_uri),
-                        move |event| rsc.handle_pod_event(event),
-                    )
+                    watch_stream_async(&format!("{}?watch=true", rsc.pods_uri), move |event| {
+                        let rsc = rsc.clone();
+                        async move {
+                            rsc.handle_pod_event(event).await;
+                        }
+                    })
                     .await;
                 })
             },
@@ -56,10 +58,9 @@ impl RSController {
             {
                 let rsc = rsc.clone();
                 tokio::spawn(async move {
-                    watch_stream::<ReplicaSetEvent, _>(
-                        &format!("{}?watch=true", rsc.rs_uri),
-                        move |event| rsc.handle_replicaset_event(event),
-                    )
+                    watch_stream(&format!("{}?watch=true", rsc.rs_uri), move |event| {
+                        rsc.handle_replicaset_event(event)
+                    })
                     .await;
                 })
             },
@@ -115,7 +116,7 @@ impl RSController {
         let _ = self.tx.try_send(event.replicaset.metadata.id);
     }
 
-    fn handle_pod_event(&self, event: PodEvent) {
+    async fn handle_pod_event(&self, event: PodEvent) {
         if event
             .pod
             .metadata
@@ -125,11 +126,25 @@ impl RSController {
                 owner.kind == OwnerKind::ReplicaSet && self.state.rs_id_exists(&owner.id)
             })
         {
-            match event.event_type {
-                EventType::Added => tracing::trace!("RS POD EVENT"),
-                EventType::Deleted => { /* TODO */ }
-                EventType::Modified => { /* TODO */ }
+            let client = Client::new();
+            let rs_id = event.pod.metadata.owner_reference.unwrap().id;
+            let Some(rs) = self.state.get_replicaset(&rs_id) else {
+                tracing::error!(id=%rs_id, "Replicaset not in state");
+                return;
             };
+            let param: String = rs.spec.selector.into();
+            let url = format!("{}?labelSelector={}", self.pods_uri, param);
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    let Ok(pods) = resp.json::<Vec<Pod>>().await else {
+                        tracing::error!("Couldnt parse pods");
+                        return;
+                    };
+                    tracing::debug!(len=%pods.len(), "Received");
+                }
+                Ok(resp) => tracing::error!("Failed to get pods: {}", resp.status()),
+                Err(err) => tracing::error!("Failed to get pods: {}", err),
+            }
         }
     }
 }

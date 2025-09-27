@@ -17,7 +17,7 @@ use shared::{
         CreatePodParams, CreateResponse, EventType, LogsQueryParams, PodEvent, PodField,
         PodManifest, PodPatch, PodQueryParams, PodStatusUpdate,
     },
-    models::pod::PodSpec,
+    models::{metadata::LabelSelector, pod::PodSpec},
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -34,14 +34,24 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 /// - `query`: Query parameters:
 ///    - `watch` (bool, optional): If true, opens a watch stream of pod events.
 ///    - `node_name` (String, optional): Filter pods assigned to the specified node.
+///    - `labelSelector` (K=V, optional): select pods by
 ///
 /// # Returns
 /// - 200 list of pods or stream of pod events
-async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder {
+async fn get(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
+    let query = q.into_inner();
+    let node_name = query.node_name.clone();
+
+    let Ok(selector) = LabelSelector::try_from(query.label_selector) else {
+        return HttpResponse::BadRequest().finish();
+    };
+    if query.watch.unwrap_or(false) && !selector.match_labels.is_empty() {
+        return HttpResponse::BadRequest().finish();
+    };
+
     if query.watch.unwrap_or(false) {
         // Watch mode
-        let node_name = query.node_name.clone();
-        let pods = state.get_pods(node_name.clone()).await;
+        let pods = state.get_pods(&node_name, &selector.match_labels).await;
         let stream = async_stream::stream! {
             // List all pods as added events
             for p in &pods {
@@ -75,7 +85,7 @@ async fn get(state: State, query: web::Query<PodQueryParams>) -> impl Responder 
             .streaming(stream)
     } else {
         // Normal list
-        let pods = state.get_pods(query.node_name.clone()).await;
+        let pods = state.get_pods(&node_name, &selector.match_labels).await;
         HttpResponse::Ok()
             .content_type("application/json")
             .body(serde_json::to_string(&pods).unwrap())

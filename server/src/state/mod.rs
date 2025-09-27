@@ -13,7 +13,7 @@ pub mod test_store;
 use actix_web::web;
 use chrono::Utc;
 use futures::future::join_all;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -123,7 +123,9 @@ impl ApiServerState {
 
         // save object and metadata in store and cache
         self.store.put_pod(&pod.metadata.id, &pod).await?;
-        self.cache.add_pod(&pod.metadata.name, pod.metadata.id);
+        self.cache.add_pod(&pod.metadata.name, &pod.metadata.id);
+        self.cache
+            .add_pod_labels(&pod.metadata.id, &pod.metadata.labels);
 
         // send event
         let event = PodEvent {
@@ -151,6 +153,7 @@ impl ApiServerState {
         // clean store and cache
         self.store.delete_pod(&id).await?;
         self.cache.delete_pod(name);
+        self.cache.remove_pod_labels(&id, &pod.metadata.labels);
 
         // send delete event
         let event = PodEvent {
@@ -235,26 +238,27 @@ impl ApiServerState {
     }
 
     /// Retrieves all pods, or only those scheduled on a specific node.
-    pub async fn get_pods(&self, query: Option<String>) -> Vec<Pod> {
-        match query {
-            Some(node_name) => {
-                let Some(pod_ids_ref) = self.cache.get_pod_ids(&node_name) else {
-                    return vec![];
-                };
-                join_all(pod_ids_ref.iter().map(|id| self.store.get_pod(id.clone())))
-                    .await
-                    .into_iter()
-                    .inspect(|res| {
-                        if let Err(e) = res {
-                            tracing::error!(error=%e, "Error fetching pod");
-                        }
-                    })
-                    .filter_map(Result::ok)
-                    .flatten()
-                    .collect()
-            }
-            None => self.store.list_pods().await.unwrap_or_default(),
+    pub async fn get_pods(
+        &self,
+        node_query: &Option<String>,
+        label_query: &HashMap<String, String>,
+    ) -> Vec<Pod> {
+        if node_query.is_none() && label_query.is_empty() {
+            return self.store.list_pods().await.unwrap_or_default();
         }
+
+        let pod_ids = self.cache.query_pods(node_query, label_query);
+        join_all(pod_ids.iter().map(|id| self.store.get_pod(id.clone())))
+            .await
+            .into_iter()
+            .inspect(|res| {
+                if let Err(e) = res {
+                    tracing::error!(error=%e, "Error fetching pod");
+                }
+            })
+            .filter_map(Result::ok)
+            .flatten()
+            .collect()
     }
 
     /// Adds a new node

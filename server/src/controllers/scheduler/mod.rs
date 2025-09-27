@@ -44,7 +44,7 @@ impl Scheduler {
                 let sched = sched.clone();
                 let nodes_uri = sched.nodes_uri.clone();
                 tokio::spawn(async move {
-                    watch_stream::<NodeEvent, _>(&nodes_uri, move |event| {
+                    watch_stream(&nodes_uri, move |event| {
                         sched.handle_node_event(event);
                     })
                     .await;
@@ -55,7 +55,7 @@ impl Scheduler {
                 let sched = sched.clone();
                 let pods_uri = sched.pods_uri.clone();
                 tokio::spawn(async move {
-                    watch_stream::<PodEvent, _>(&pods_uri, move |event| {
+                    watch_stream(&pods_uri, move |event| {
                         sched.handle_pod_event(event);
                     })
                     .await;

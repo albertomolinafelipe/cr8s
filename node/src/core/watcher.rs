@@ -18,7 +18,7 @@ pub async fn run(state: State, tx: Sender<WorkRequest>) -> Result<(), String> {
         "{}/pods?watch=true&nodeName={}",
         state.config.server_url, state.config.name
     );
-    watch_stream::<PodEvent, _>(&url, move |event| {
+    watch_stream(&url, move |event| {
         handle_event(state.clone(), event, &tx);
     })
     .await;

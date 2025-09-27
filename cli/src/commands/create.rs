@@ -7,7 +7,11 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{
     api::{PodContainers, PodManifest, ReplicaSetManifest},
-    models::{metadata::ObjectMetadata, pod::ContainerSpec, replicaset::ReplicaSetSpec},
+    models::{
+        metadata::{LabelSelector, ObjectMetadata},
+        pod::ContainerSpec,
+        replicaset::ReplicaSetSpec,
+    },
 };
 use tokio::fs;
 
@@ -86,6 +90,7 @@ pub enum Spec {
     },
     ReplicaSet {
         replicas: u16,
+        selector: LabelSelector,
         template: PodManifest,
     },
 }
@@ -98,9 +103,17 @@ impl Spec {
                 metadata,
                 spec: PodContainers { containers },
             }),
-            Spec::ReplicaSet { replicas, template } => Box::new(ReplicaSetManifest {
+            Spec::ReplicaSet {
+                replicas,
+                selector,
+                template,
+            } => Box::new(ReplicaSetManifest {
                 metadata,
-                spec: ReplicaSetSpec { replicas, template },
+                spec: ReplicaSetSpec {
+                    replicas,
+                    selector,
+                    template,
+                },
             }),
         }
     }

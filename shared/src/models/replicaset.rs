@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     api::{PodContainers, PodManifest},
-    models::metadata::{Metadata, ObjectMetadata, OwnerKind, OwnerReference},
+    models::metadata::{LabelSelector, Metadata, ObjectMetadata, OwnerKind, OwnerReference},
 };
 
 // --- Core ---
@@ -25,6 +25,7 @@ pub struct ReplicaSetStatus {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ReplicaSetSpec {
     pub replicas: u16,
+    pub selector: LabelSelector,
     pub template: PodManifest,
 }
 
@@ -51,6 +52,7 @@ impl From<ReplicaSet> for PodManifest {
                     kind: OwnerKind::ReplicaSet,
                     controller: true,
                 }),
+                labels: rs.spec.template.metadata.labels,
             },
             spec: PodContainers {
                 containers: rs.spec.template.spec.containers,

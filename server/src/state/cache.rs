@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use dashmap::{DashMap, DashSet};
 use uuid::Uuid;
 
@@ -22,6 +24,8 @@ pub struct CacheManager {
 
     /// Set of know rs names
     replicaset_names: DashSet<String>,
+    /// Labels lookups
+    pod_label_idx: DashMap<String, DashMap<String, DashSet<Uuid>>>,
 }
 
 impl CacheManager {
@@ -32,6 +36,7 @@ impl CacheManager {
             pod_map: DashMap::new(),
             pod_name_idx: DashMap::new(),
             replicaset_names: DashSet::new(),
+            pod_label_idx: DashMap::new(),
         }
     }
 
@@ -95,15 +100,18 @@ impl CacheManager {
     }
 
     /// Inserts a pod with no node assignment initially.
-    pub fn add_pod(&self, name: &str, id: Uuid) {
+    pub fn add_pod(&self, name: &str, id: &Uuid) {
         self.pod_name_idx.insert(
             name.to_string(),
             PodInfo {
                 node: "".to_string(),
-                id,
+                id: id.clone(),
             },
         );
-        self.pod_map.entry("".to_string()).or_default().insert(id);
+        self.pod_map
+            .entry("".to_string())
+            .or_default()
+            .insert(id.clone());
     }
 
     /// Deletes a pod from both the pod map and node assignment.
@@ -132,5 +140,99 @@ impl CacheManager {
             .entry(node_name.to_string())
             .or_insert_with(DashSet::new)
             .insert(*pod_id);
+    }
+
+    pub fn add_pod_labels(&self, pod_id: &Uuid, labels: &HashMap<String, String>) {
+        for (k, v) in labels {
+            let inner = self
+                .pod_label_idx
+                .entry(k.clone())
+                .or_insert_with(DashMap::new);
+            let set = inner.entry(v.clone()).or_insert_with(DashSet::new);
+            set.insert(pod_id.clone());
+        }
+    }
+
+    pub fn remove_pod_labels(&self, pod_id: &Uuid, labels: &HashMap<String, String>) {
+        for (k, v) in labels {
+            if let Some(inner) = self.pod_label_idx.get(k) {
+                if let Some(set) = inner.get(v) {
+                    set.remove(pod_id);
+                }
+            }
+        }
+    }
+    pub fn query_pods_by_labels(&self, labels: &HashMap<String, String>) -> Vec<Uuid> {
+        let mut sets: Vec<Vec<Uuid>> = Vec::new();
+
+        for (k, v) in labels {
+            if let Some(inner) = self.pod_label_idx.get(k) {
+                if let Some(set) = inner.get(v) {
+                    sets.push(set.iter().map(|id| *id).collect());
+                } else {
+                    // no pods match
+                    return Vec::new();
+                }
+            } else {
+                // key not found
+                return Vec::new();
+            }
+        }
+
+        if sets.is_empty() {
+            return Vec::new();
+        }
+
+        // intersect all sets
+        let mut intersection: HashSet<Uuid> = sets[0].iter().copied().collect();
+        for s in sets.iter().skip(1) {
+            intersection = intersection
+                .intersection(&s.iter().copied().collect())
+                .copied()
+                .collect();
+        }
+
+        intersection.into_iter().collect()
+    }
+
+    pub fn query_pods(
+        &self,
+        node_name: &Option<String>,
+        labels: &HashMap<String, String>,
+    ) -> Vec<Uuid> {
+        let mut pod_sets: Vec<std::collections::HashSet<Uuid>> = Vec::new();
+
+        // by node name
+        if let Some(node) = node_name {
+            if let Some(node_set) = self.pod_map.get(node) {
+                pod_sets.push(node_set.clone().into_iter().collect());
+            } else {
+                return Vec::new();
+            }
+        }
+
+        // by labels
+        if !labels.is_empty() {
+            let label_pods = self.query_pods_by_labels(labels);
+            if label_pods.is_empty() {
+                return Vec::new();
+            }
+            pod_sets.push(label_pods.into_iter().collect());
+        }
+
+        //return all pod IDs
+        if pod_sets.is_empty() {
+            let all_pods: std::collections::HashSet<Uuid> =
+                self.pod_name_idx.iter().map(|e| e.id).collect();
+            return all_pods.into_iter().collect();
+        }
+
+        // intersect
+        let mut intersection = pod_sets[0].clone();
+        for s in pod_sets.iter().skip(1) {
+            intersection = intersection.intersection(s).copied().collect();
+        }
+
+        intersection.into_iter().collect()
     }
 }

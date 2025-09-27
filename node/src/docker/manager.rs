@@ -94,7 +94,7 @@ impl DockerManager {
 
         let mut stream = docker.create_image(options, None, None);
 
-        tracing::info!(%image, "Pulling");
+        tracing::debug!(%image, "Pulling");
         while let Some(_status) = stream
             .try_next()
             .await
@@ -185,7 +185,7 @@ impl DockerClient for DockerManager {
             );
         }
 
-        tracing::debug!(
+        tracing::info!(
             pod=%pod.metadata.name,
             "Started"
         );

@@ -64,6 +64,7 @@ async fn create(state: State, payload: web::Json<ReplicaSetManifest>) -> impl Re
     let manifest = payload.into_inner();
 
     if manifest.metadata.owner_reference.is_some() || manifest.spec.replicas < 1 {
+        tracing::debug!("Format");
         return HttpResponse::BadRequest().finish();
     }
 

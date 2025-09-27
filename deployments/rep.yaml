@@ -3,8 +3,13 @@ metadata:
   name: cont-repset
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: web
   template:
     metadata:
+      labels:
+        app: web
       name: cont-pod
     spec:
       containers:

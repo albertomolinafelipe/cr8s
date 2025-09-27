@@ -37,7 +37,7 @@ impl GCController {
                 let gc = gc.clone();
                 let pods_uri = gc.pods_uri.clone();
                 tokio::spawn(async move {
-                    watch_stream::<PodEvent, _>(&pods_uri, move |event| {
+                    watch_stream(&pods_uri, move |event| {
                         let _ = gc.tx.try_send(event);
                     })
                     .await;

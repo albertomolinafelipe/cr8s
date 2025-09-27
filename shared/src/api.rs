@@ -20,6 +20,8 @@ pub struct PodQueryParams {
     #[serde(rename = "nodeName")]
     pub node_name: Option<String>,
     pub watch: Option<bool>,
+    #[serde(rename = "labelSelector", default)]
+    pub label_selector: String,
 }
 
 /// Fetching logs from a container.
