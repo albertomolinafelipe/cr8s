@@ -28,13 +28,13 @@ pub struct ObjectMetadata {
     pub labels: HashMap<String, String>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct LabelSelector {
     #[serde(rename = "matchLabels")]
     pub match_labels: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct OwnerReference {
     pub id: Uuid,
     pub name: String,
@@ -45,6 +45,12 @@ pub struct OwnerReference {
 #[derive(PartialEq, Debug, Clone, Deserialize, Serialize)]
 pub enum OwnerKind {
     ReplicaSet,
+}
+
+impl Default for OwnerKind {
+    fn default() -> Self {
+        Self::ReplicaSet
+    }
 }
 
 impl Default for ObjectMetadata {
