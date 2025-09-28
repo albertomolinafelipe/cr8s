@@ -20,12 +20,12 @@ use async_trait::async_trait;
 /// Trait for persistent store functionality (e.g., etcd, memory).
 #[async_trait]
 pub trait Store: Send + Sync {
-    async fn get_pod(&self, id: Uuid) -> Result<Option<Pod>, StoreError>;
+    async fn get_pod(&self, id: &Uuid) -> Result<Option<Pod>, StoreError>;
     async fn put_pod(&self, id: &Uuid, pod: &Pod) -> Result<(), StoreError>;
     async fn list_pods(&self) -> Result<Vec<Pod>, StoreError>;
     async fn delete_pod(&self, id: &Uuid) -> Result<(), StoreError>;
 
-    async fn get_replicaset(&self, id: Uuid) -> Result<Option<ReplicaSet>, StoreError>;
+    async fn get_replicaset(&self, id: &Uuid) -> Result<Option<ReplicaSet>, StoreError>;
     async fn put_replicaset(&self, id: &Uuid, pod: &ReplicaSet) -> Result<(), StoreError>;
     async fn list_replicasets(&self) -> Result<Vec<ReplicaSet>, StoreError>;
     async fn delete_replicaset(&self, id: &Uuid) -> Result<(), StoreError>;
@@ -168,8 +168,8 @@ impl EtcdStore {
 
 #[async_trait]
 impl Store for EtcdStore {
-    async fn get_pod(&self, id: Uuid) -> Result<Option<Pod>, StoreError> {
-        self.get_object::<Pod>(&Self::pod_key(&id)).await
+    async fn get_pod(&self, id: &Uuid) -> Result<Option<Pod>, StoreError> {
+        self.get_object::<Pod>(&Self::pod_key(id)).await
     }
     async fn put_pod(&self, id: &Uuid, pod: &Pod) -> Result<(), StoreError> {
         self.put_object::<Pod>(&Self::pod_key(id), pod).await
@@ -181,8 +181,8 @@ impl Store for EtcdStore {
         self.delete_object(&Self::pod_key(id)).await
     }
 
-    async fn get_replicaset(&self, id: Uuid) -> Result<Option<ReplicaSet>, StoreError> {
-        self.get_object::<ReplicaSet>(&Self::replicaset_key(&id))
+    async fn get_replicaset(&self, id: &Uuid) -> Result<Option<ReplicaSet>, StoreError> {
+        self.get_object::<ReplicaSet>(&Self::replicaset_key(id))
             .await
     }
     async fn put_replicaset(&self, id: &Uuid, pod: &ReplicaSet) -> Result<(), StoreError> {

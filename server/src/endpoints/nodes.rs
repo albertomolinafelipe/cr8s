@@ -20,13 +20,31 @@ use shared::{
 use uuid::Uuid;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("", web::get().to(get))
+    cfg.route("", web::get().to(list))
+        .route("/{node_name}", web::get().to(get))
         .route("", web::post().to(register));
 }
 
 #[derive(Deserialize)]
 pub struct NodeQuery {
     watch: Option<bool>,
+}
+
+/// Fetch node by name
+///
+/// # Arguments
+/// - `path_string`: Node name from URL path.
+///
+/// # Returns
+/// - 200
+/// - 404 replicaset not found
+async fn get(state: State, path_string: web::Path<String>) -> impl Responder {
+    let name = path_string.into_inner();
+    match state.get_node(&name).await {
+        Err(err) => err.to_http_response(),
+        Ok(Some(node)) => HttpResponse::Ok().json(&node),
+        Ok(None) => HttpResponse::NotFound().finish(),
+    }
 }
 
 /// List or watch nodes
@@ -38,8 +56,8 @@ pub struct NodeQuery {
 ///
 /// # Returns
 /// - 200 list of nodes or stream of node events
-async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
-    let nodes = state.get_nodes().await;
+async fn list(state: State, query: web::Query<NodeQuery>) -> impl Responder {
+    let nodes = state.list_nodes().await;
     if query.watch.unwrap_or(false) {
         // Watch mode
         let mut rx = state.node_tx.subscribe();
@@ -159,7 +177,7 @@ mod tests {
         init_service(
             App::new()
                 .app_data(state.clone())
-                .route("/nodes", web::get().to(get))
+                .route("/nodes", web::get().to(list))
                 .route("/nodes", web::post().to(register)),
         )
         .await

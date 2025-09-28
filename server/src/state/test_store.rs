@@ -28,8 +28,8 @@ impl TestStore {
 
 #[async_trait]
 impl Store for TestStore {
-    async fn get_pod(&self, id: Uuid) -> Result<Option<Pod>, StoreError> {
-        Ok(self.pods.get(&id).map(|ref_entry| ref_entry.clone()))
+    async fn get_pod(&self, id: &Uuid) -> Result<Option<Pod>, StoreError> {
+        Ok(self.pods.get(id).map(|ref_entry| ref_entry.clone()))
     }
 
     async fn put_pod(&self, id: &Uuid, pod: &Pod) -> Result<(), StoreError> {
@@ -67,8 +67,8 @@ impl Store for TestStore {
             .collect())
     }
 
-    async fn get_replicaset(&self, id: Uuid) -> Result<Option<ReplicaSet>, StoreError> {
-        Ok(self.replicasets.get(&id).map(|ref_entry| ref_entry.clone()))
+    async fn get_replicaset(&self, id: &Uuid) -> Result<Option<ReplicaSet>, StoreError> {
+        Ok(self.replicasets.get(id).map(|ref_entry| ref_entry.clone()))
     }
 
     async fn put_replicaset(&self, id: &Uuid, replicaset: &ReplicaSet) -> Result<(), StoreError> {

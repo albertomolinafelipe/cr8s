@@ -46,16 +46,18 @@ pub struct ApiServerState {
 
 impl ApiServerState {
     //! - add_pod(spec, metadata): Validate and add a new pod to the store and cache, then broadcast an event
+    //! - get_pod(id)
     //! - delete_pod(name): Remove a pod the store and cache, then broadcast an event
     //! - assign_pod(name, node_name): Assign an unassigned pod to a  ode, update store and cache, broadcast event
     //! - update_pod_status(id, status, cont_status): Update the status and container statuses of a pod
-    //! - get_pods(query): List pods optionally filtered by node name
+    //! - list_pods(query): List pods optionally filtered by node name
     //!
     //! - add_replicaset(sepc, metadata)
-    //! - get_replicasets()
+    //! - list_replicasets()
+    //! - get_replicaset(id)
     //!
     //! - add_node(node): Add a new node to the store and cache, then broadcast an event
-    //! - get_nodes(): Retrieve all Nodes from the store
+    //! - list_nodes(): Retrieve all Nodes from the store
     //! - get_node(name): Get a specific Node by name from the store
     //! - update_node_heartbeat(node_name): Update the heartbeat timestamp of a node in the store
 
@@ -94,7 +96,8 @@ impl ApiServerState {
         };
 
         self.store.put_replicaset(&rs.metadata.id, &rs).await?;
-        self.cache.add_replicaset(&rs.metadata.name);
+        self.cache
+            .add_replicaset(&rs.metadata.name, &rs.metadata.id);
 
         // send event
         let event = ReplicaSetEvent {
@@ -106,8 +109,17 @@ impl ApiServerState {
     }
 
     /// Retrieves all replicasets.
-    pub async fn get_replicasets(&self) -> Vec<ReplicaSet> {
+    pub async fn list_replicasets(&self) -> Vec<ReplicaSet> {
         self.store.list_replicasets().await.unwrap_or_default()
+    }
+
+    pub async fn get_replicaset(&self, id: &Uuid) -> Result<Option<ReplicaSet>, StoreError> {
+        self.store.get_replicaset(id).await
+    }
+
+    /// Get pod by id
+    pub async fn get_pod(&self, id: &Uuid) -> Result<Option<Pod>, StoreError> {
+        self.store.get_pod(id).await
     }
 
     /// Adds a new pod, assigns it a UUID, and emits a PodEvent.
@@ -146,7 +158,7 @@ impl ApiServerState {
         // get object from store
         let pod = self
             .store
-            .get_pod(id)
+            .get_pod(&id)
             .await?
             .ok_or_else(|| StoreError::NotFound("Pod not found".to_string()))?;
 
@@ -184,7 +196,7 @@ impl ApiServerState {
         // check pod is unassigned
         let mut pod = self
             .store
-            .get_pod(pod_id.clone())
+            .get_pod(&pod_id)
             .await?
             .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
 
@@ -220,7 +232,7 @@ impl ApiServerState {
     ) -> Result<(), StoreError> {
         let mut pod = self
             .store
-            .get_pod(*id)
+            .get_pod(id)
             .await?
             .ok_or(StoreError::NotFound("Pod not found in store".to_string()))?;
 
@@ -238,7 +250,7 @@ impl ApiServerState {
     }
 
     /// Retrieves all pods, or only those scheduled on a specific node.
-    pub async fn get_pods(
+    pub async fn list_pods(
         &self,
         node_query: &Option<String>,
         label_query: &HashMap<String, String>,
@@ -248,7 +260,7 @@ impl ApiServerState {
         }
 
         let pod_ids = self.cache.query_pods(node_query, label_query);
-        join_all(pod_ids.iter().map(|id| self.store.get_pod(id.clone())))
+        join_all(pod_ids.iter().map(|id| self.store.get_pod(id)))
             .await
             .into_iter()
             .inspect(|res| {
@@ -277,7 +289,7 @@ impl ApiServerState {
     }
 
     /// Retrieves all registered nodes.
-    pub async fn get_nodes(&self) -> Vec<Node> {
+    pub async fn list_nodes(&self) -> Vec<Node> {
         self.store.list_nodes().await.unwrap_or_default()
     }
 
