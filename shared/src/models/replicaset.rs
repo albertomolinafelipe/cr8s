@@ -8,7 +8,7 @@ use crate::{
 
 // --- Core ---
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct ReplicaSet {
     pub metadata: Metadata,
     pub spec: ReplicaSetSpec,
@@ -30,6 +30,16 @@ pub struct ReplicaSetSpec {
 }
 
 // --- Impl ---
+
+impl Default for ReplicaSetSpec {
+    fn default() -> Self {
+        Self {
+            replicas: 2,
+            selector: LabelSelector::default(),
+            template: PodManifest::default(),
+        }
+    }
+}
 
 impl Default for ReplicaSetStatus {
     fn default() -> Self {

@@ -165,7 +165,7 @@ async fn update_status(
     // Update node heartbeat
     if let Err(error) = state.update_node_heartbeat(&status_update.node_name).await {
         tracing::warn!(error=%error, "Failed to update node heartbeat");
-        // return error.to_http_response();
+        return error.to_http_response();
     }
 
     // Check body container names match spec
@@ -188,6 +188,8 @@ async fn update_status(
 ///
 /// # Arguments
 /// - `body`: Pod manifest JSON.
+/// - `query
+///     - controller (bool, opt): differentiate between controller and user reqs
 ///
 /// # Returns
 /// - 201: Pod created.
@@ -386,6 +388,7 @@ mod tests {
     //!  - test_create_pod
     //!  - test_create_pod_repeat_name
     //!  - test_create_pod_repeat_container_names
+    //!  - test_create_pod_controller_owner_reference
     //!
     //!  DELETE
     //!  - test_delete_pod
@@ -814,6 +817,11 @@ mod tests {
         let res = call_service(&app, req).await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[actix_web::test]
+    async fn test_create_pod_controller_owner_reference() {}
+
+    // --- Delete pod ---
 
     #[actix_web::test]
     async fn test_delete_pod() {

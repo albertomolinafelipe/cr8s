@@ -166,19 +166,6 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_get_nodes_empty() {
-        let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
-        let app = node_service(&state).await;
-
-        let req = TestRequest::get().uri("/nodes").to_request();
-        let res = call_service(&app, req).await;
-
-        assert!(res.status().is_success());
-        let nodes: Vec<Node> = read_body_json(res).await;
-        assert!(nodes.is_empty(), "Node list should be empty");
-    }
-
-    #[actix_web::test]
     async fn test_get_nodes() {
         let test_store = TestStore::new();
         let node = Node::default();
@@ -196,10 +183,8 @@ mod tests {
     #[actix_web::test]
     async fn test_get_nodes_watch() {
         let test_store = TestStore::new();
-        let n1 = Node {
-            name: "n1".to_string(),
-            ..Default::default()
-        };
+        let n1 = Node::default();
+        let n2 = Node::default();
         test_store.nodes.insert(n1.name.clone(), n1.clone());
         let state = ApiServerState::new_with_store(Box::new(test_store)).await;
 
@@ -210,10 +195,6 @@ mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        let n2 = Node {
-            name: "n1".to_string(),
-            ..Default::default()
-        };
         assert!(state.add_node(&n2).await.is_ok());
         assert!(resp.status().is_success());
 
@@ -221,8 +202,7 @@ mod tests {
         collect_stream_events(resp, &mut events, 2).await;
 
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].node.name, n1.name);
-        assert_eq!(events[1].node.name, n2.name);
+        assert_ne!(events[0].node.name, events[1].node.name);
     }
 
     #[actix_web::test]

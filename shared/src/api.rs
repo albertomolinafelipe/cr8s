@@ -62,7 +62,7 @@ pub struct PodManifest {
     pub spec: PodContainers,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct ReplicaSetManifest {
     pub metadata: ObjectMetadata,
     pub spec: ReplicaSetSpec,
