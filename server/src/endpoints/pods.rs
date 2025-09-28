@@ -22,10 +22,31 @@ use shared::{
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(list))
+        .route("/{pod_name}", web::get().to(get))
         .route("/{pod_name}", web::patch().to(update))
         .route("/{pod_name}", web::delete().to(delete))
         .route("/{pod_name}/logs", web::get().to(logs))
         .route("", web::post().to(create));
+}
+
+/// Fetch pod by name
+///
+/// # Arguments
+/// - `path_string`: Pod name from URL path.
+///
+/// # Returns
+/// - 200
+/// - 404 pod not found
+async fn get(state: State, path_string: web::Path<String>) -> impl Responder {
+    let name = path_string.into_inner();
+    if let Some(pod_id) = state.cache.get_pod_id(&name) {
+        match state.get_pod(&pod_id).await {
+            Err(err) => return err.to_http_response(),
+            Ok(Some(pod)) => return HttpResponse::Ok().json(&pod),
+            Ok(None) => tracing::warn!("Pod name cache hit, not in store"),
+        };
+    };
+    HttpResponse::NotFound().finish()
 }
 
 /// List or watch pods, optionally filtered by node name.
@@ -84,14 +105,11 @@ async fn list(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
             }
         };
 
-        HttpResponse::Ok()
+        return HttpResponse::Ok()
             .content_type("application/json")
-            .streaming(stream)
-    } else {
-        HttpResponse::Ok()
-            .content_type("application/json")
-            .body(serde_json::to_string(&pods).unwrap())
+            .streaming(stream);
     }
+    HttpResponse::Ok().json(pods)
 }
 
 /// Update pod fields like node assignment.

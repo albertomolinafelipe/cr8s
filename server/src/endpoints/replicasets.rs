@@ -14,12 +14,33 @@ use shared::api::{CreateResponse, EventType, ReplicaSetEvent, ReplicaSetManifest
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.route("", web::get().to(list))
+        .route("/{rs_name}", web::get().to(get))
         .route("", web::post().to(create));
 }
 
 #[derive(Deserialize)]
 pub struct ReplicaSetQuery {
     watch: Option<bool>,
+}
+
+/// Fetch replicaset by name
+///
+/// # Arguments
+/// - `path_string`: Replicaset name from URL path.
+///
+/// # Returns
+/// - 200
+/// - 404 pod not found
+async fn get(state: State, path_string: web::Path<String>) -> impl Responder {
+    let name = path_string.into_inner();
+    if let Some(rs_id) = state.cache.get_replicaset_id(&name) {
+        match state.get_replicaset(&rs_id).await {
+            Err(err) => return err.to_http_response(),
+            Ok(Some(rs)) => return HttpResponse::Ok().json(&rs),
+            Ok(None) => tracing::warn!("Replicaset name cache hit, not in store"),
+        };
+    };
+    HttpResponse::NotFound().finish()
 }
 
 /// List or watch replicasets
