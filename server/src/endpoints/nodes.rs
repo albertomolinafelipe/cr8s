@@ -20,7 +20,7 @@ use shared::{
 use uuid::Uuid;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("", web::get().to(get))
+    cfg.route("", web::get().to(list))
         .route("", web::post().to(register));
 }
 
@@ -38,8 +38,8 @@ pub struct NodeQuery {
 ///
 /// # Returns
 /// - 200 list of nodes or stream of node events
-async fn get(state: State, query: web::Query<NodeQuery>) -> impl Responder {
-    let nodes = state.get_nodes().await;
+async fn list(state: State, query: web::Query<NodeQuery>) -> impl Responder {
+    let nodes = state.list_nodes().await;
     if query.watch.unwrap_or(false) {
         // Watch mode
         let mut rx = state.node_tx.subscribe();
@@ -159,7 +159,7 @@ mod tests {
         init_service(
             App::new()
                 .app_data(state.clone())
-                .route("/nodes", web::get().to(get))
+                .route("/nodes", web::get().to(list))
                 .route("/nodes", web::post().to(register)),
         )
         .await

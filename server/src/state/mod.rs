@@ -49,13 +49,13 @@ impl ApiServerState {
     //! - delete_pod(name): Remove a pod the store and cache, then broadcast an event
     //! - assign_pod(name, node_name): Assign an unassigned pod to a  ode, update store and cache, broadcast event
     //! - update_pod_status(id, status, cont_status): Update the status and container statuses of a pod
-    //! - get_pods(query): List pods optionally filtered by node name
+    //! - list_pods(query): List pods optionally filtered by node name
     //!
     //! - add_replicaset(sepc, metadata)
     //! - get_replicasets()
     //!
     //! - add_node(node): Add a new node to the store and cache, then broadcast an event
-    //! - get_nodes(): Retrieve all Nodes from the store
+    //! - list_nodes(): Retrieve all Nodes from the store
     //! - get_node(name): Get a specific Node by name from the store
     //! - update_node_heartbeat(node_name): Update the heartbeat timestamp of a node in the store
 
@@ -106,7 +106,7 @@ impl ApiServerState {
     }
 
     /// Retrieves all replicasets.
-    pub async fn get_replicasets(&self) -> Vec<ReplicaSet> {
+    pub async fn list_replicasets(&self) -> Vec<ReplicaSet> {
         self.store.list_replicasets().await.unwrap_or_default()
     }
 
@@ -238,7 +238,7 @@ impl ApiServerState {
     }
 
     /// Retrieves all pods, or only those scheduled on a specific node.
-    pub async fn get_pods(
+    pub async fn list_pods(
         &self,
         node_query: &Option<String>,
         label_query: &HashMap<String, String>,
@@ -277,7 +277,7 @@ impl ApiServerState {
     }
 
     /// Retrieves all registered nodes.
-    pub async fn get_nodes(&self) -> Vec<Node> {
+    pub async fn list_nodes(&self) -> Vec<Node> {
         self.store.list_nodes().await.unwrap_or_default()
     }
 

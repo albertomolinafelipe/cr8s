@@ -13,7 +13,7 @@ use serde::Deserialize;
 use shared::api::{CreateResponse, EventType, ReplicaSetEvent, ReplicaSetManifest};
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("", web::get().to(get))
+    cfg.route("", web::get().to(list))
         .route("", web::post().to(create));
 }
 
@@ -27,12 +27,12 @@ pub struct ReplicaSetQuery {
 /// # Arguments
 /// - `query`: Query parameters:
 ///    - `watch` (bool, optional): If true, opens a watch stream of node events.
-///    - TODO filter or get by name
+///    - TODO filter or list by name
 ///
 /// # Returns
 /// - 200 list of nodes or stream of node events
-async fn get(state: State, query: web::Query<ReplicaSetQuery>) -> impl Responder {
-    let replicasets = state.get_replicasets().await;
+async fn list(state: State, query: web::Query<ReplicaSetQuery>) -> impl Responder {
+    let replicasets = state.list_replicasets().await;
     if query.watch.unwrap_or(false) {
         // Watch mode
         let mut rx = state.replicaset_tx.subscribe();
@@ -111,8 +111,8 @@ async fn create(state: State, payload: web::Json<ReplicaSetManifest>) -> impl Re
 mod tests {
 
     //!  GET
-    //!  - test_get_replicasets
-    //!  - test_get_replicasets_watch
+    //!  - test_list_replicasets
+    //!  - test_list_replicasets_watch
     //!
     //!  CREATE
     //!  - test_create_replicaset
@@ -141,7 +141,7 @@ mod tests {
         init_service(
             App::new()
                 .app_data(state.clone())
-                .route("/replicasets", web::get().to(get))
+                .route("/replicasets", web::get().to(list))
                 .route("/replicasets", web::post().to(create)),
         )
         .await
@@ -150,7 +150,7 @@ mod tests {
     // --- Get replicasets ---
 
     #[actix_web::test]
-    async fn test_get_replicasets() {
+    async fn test_list_replicasets() {
         let test_store = TestStore::new();
         let rs = ReplicaSet::default();
         test_store.replicasets.insert(rs.metadata.id.clone(), rs);
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_get_replicaset_watch() {
+    async fn test_list_replicaset_watch() {
         let test_store = TestStore::new();
         let rs1 = ReplicaSet::default();
         let rs2 = ReplicaSet::default();

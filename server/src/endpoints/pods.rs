@@ -21,7 +21,7 @@ use shared::{
 };
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("", web::get().to(get))
+    cfg.route("", web::get().to(list))
         .route("/{pod_name}", web::patch().to(update))
         .route("/{pod_name}", web::delete().to(delete))
         .route("/{pod_name}/logs", web::get().to(logs))
@@ -40,7 +40,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 /// - 200 list of pods or stream of pod events
 /// - 400 wrong label selector formator
 /// - 501 labelSelect and watch is not implemented
-async fn get(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
+async fn list(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
     let query = q.into_inner();
     let node_name = query.node_name.clone();
 
@@ -53,7 +53,7 @@ async fn get(state: State, q: web::Query<PodQueryParams>) -> impl Responder {
         return HttpResponse::NotImplemented().finish();
     };
 
-    let pods = state.get_pods(&node_name, &selector.match_labels).await;
+    let pods = state.list_pods(&node_name, &selector.match_labels).await;
     if query.watch.unwrap_or(false) {
         // Watch mode
         let stream = async_stream::stream! {
@@ -305,7 +305,7 @@ async fn logs(
             return HttpResponse::InternalServerError().finish();
         }
         Err(err) => {
-            tracing::warn!(error=%err, "Failed to get node");
+            tracing::warn!(error=%err, "Failed to list node");
             return err.to_http_response();
         }
     };
@@ -364,12 +364,12 @@ async fn logs(
 mod tests {
 
     //!  GET
-    //!  - test_get_pods_query
-    //!  - test_get_pods_watch
+    //!  - test_list_pods_query
+    //!  - test_list_pods_watch
     //!         pods added before and after watch call, assigned and unassigned
-    //!  - test_get_pod_label_selector_format
-    //!  - test_get_pod_param_conflict
-    //!  - test_get_pod_label_and_node_filter
+    //!  - test_list_pod_label_selector_format
+    //!  - test_list_pod_param_conflict
+    //!  - test_list_pod_label_and_node_filter
     //!
     //!  PATCH POD
     //!  - test_assign_pod
@@ -423,7 +423,7 @@ mod tests {
         init_service(
             App::new()
                 .app_data(state.clone())
-                .route("/pods", web::get().to(get))
+                .route("/pods", web::get().to(list))
                 .route("/pods", web::post().to(create))
                 .route("/pods/{pod_name}", web::patch().to(update))
                 .route("/pods/{pod_name}", web::delete().to(delete))
@@ -451,7 +451,7 @@ mod tests {
     // --- Get tests ---
 
     #[actix_web::test]
-    async fn test_get_pods_query() {
+    async fn test_list_pods_query() {
         let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let _ = add_pod(&state).await;
 
@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_get_pods_watch() {
+    async fn test_list_pods_watch() {
         // Add initial assigned pod
         let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
         let (node_name, pod_name_1) = add_assigned_pod(&state).await;
@@ -506,7 +506,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_get_pod_label_selector_format() {
+    async fn test_list_pod_label_selector_format() {
         let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
 
         let app = pod_service(&state).await;
@@ -519,7 +519,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_get_pod_param_conflict() {
+    async fn test_list_pod_param_conflict() {
         let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
 
         let app = pod_service(&state).await;
@@ -532,7 +532,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_get_pod_label_and_node_filter() {
+    async fn test_list_pod_label_and_node_filter() {
         let state = ApiServerState::new_with_store(Box::new(TestStore::new())).await;
 
         // Add assigned pod
